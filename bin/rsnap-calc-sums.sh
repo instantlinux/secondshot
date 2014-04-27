@@ -11,7 +11,7 @@
 PATHNAME=$1
 SAVESET=$2
 
-DBHOST=db00
+DBHOST=mdb00
 DBNAME=rsnap
 DBUSER=$BKP_USER
 [ "$SAVESET" -eq "$SAVESET" ] 2> /dev/null
