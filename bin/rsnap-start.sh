@@ -6,7 +6,7 @@ HOST=$1
 VOLUME=$2
 SAVESET="$HOST-$VOLUME-`date +%Y%m%d-%H`"
 
-DBHOST=mdb00
+DBHOST=db00
 DBNAME=rsnap
 DBUSER=$BKP_USER
 PATHNAME=/var/backup/daily/hourly.0
