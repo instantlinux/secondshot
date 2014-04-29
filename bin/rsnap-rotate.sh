@@ -5,7 +5,7 @@
 . /etc/default/secure.sh
 INTERVAL=$1
 
-DBHOST=db00
+DBHOST=db01
 DBNAME=rsnap
 DBUSER=$BKP_USER
 
