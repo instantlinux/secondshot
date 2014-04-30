@@ -11,7 +11,8 @@ WEEKDAY=`date +%w`
 DAY=`date +%d`
 MONTH=`date +%m`
 
-CONFIG=~rsnap/etc/backup-daily.conf
+CONFIG=/var/lib/ilinux/rsnap/etc/backup-daily.conf
+BIN=/var/lib/ilinux/rsnap/bin
 RET=0
 
 il_syslog info START
@@ -19,16 +20,16 @@ il_syslog info START
 # Sync each destination, and inject filename metadata into the backup saveset
 for HOST in $HOSTS; do
   BKPHOST=`hostname -s`
-  SAVESET=`~rsnap/bin/rsnap-start.sh $HOST daily-$BKPHOST`
+  SAVESET=`$BIN/rsnap-start.sh $HOST daily-$BKPHOST`
   if [ $? == 0 ]; then
     rsnapshot -c $CONFIG sync $HOST
     ERR=$?
     if [ $ERR == 0 ]; then
-      ~rsnap/bin/rsnap-inject.sh $HOST daily-$BKPHOST $SNAPSHOT_ROOT/.sync $SAVESET
+      $BIN/rsnap-inject.sh $HOST daily-$BKPHOST $SNAPSHOT_ROOT/.sync $SAVESET
       if [ $? != 0 ]; then
         RET=$?
       else
-        ~rsnap/bin/rsnap-calc-sums.sh $SNAPSHOT_ROOT $SAVESET
+        $BIN/rsnap-calc-sums.sh $SNAPSHOT_ROOT $SAVESET
       fi
     else
       RET=$ERR
@@ -41,16 +42,16 @@ done
 # Rotate the snapshots
 if [ $RET == 0 ]; then
   rsnapshot -c $CONFIG hourly
-  ~rsnap/bin/rsnap-rotate.sh hourly
+  $BIN/rsnap-rotate.sh hourly
   if [ $HOUR -le 02 ]; then
     rsnapshot -c $CONFIG daysago
-    ~rsnap/bin/rsnap-rotate.sh daysago
-    [ $WEEKDAY == 0 ] && rsnapshot -c $CONFIG weeksago && ~rsnap/bin/rsnap-rotate.sh weeksago
+    $BIN/rsnap-rotate.sh daysago
+    [ $WEEKDAY == 0 ] && rsnapshot -c $CONFIG weeksago && $BIN/rsnap-rotate.sh weeksago
     if [ $DAY == 1 ]; then
       rsnapshot -c $CONFIG monthsago
-      ~rsnap/bin/rsnap-rotate.sh monthsago
-      [ $MONTH == 9 ] || [ $MONTH == 3 ] && rsnapshot -c $CONFIG semiannually && ~rsnap/bin/rsnap-rotate.sh semiannually
-      [ $MONTH == 9 ] && rsnapshot -c yearsago && ~rsnap/bin/rsnap-rotate.sh yearsago
+      $BIN/rsnap-rotate.sh monthsago
+      [ $MONTH == 9 ] || [ $MONTH == 3 ] && rsnapshot -c $CONFIG semiannually && $BIN/rsnap-rotate.sh semiannually
+      [ $MONTH == 9 ] && rsnapshot -c yearsago && $BIN/rsnap-rotate.sh yearsago
     fi
   fi
 fi

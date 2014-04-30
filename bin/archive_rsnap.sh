@@ -18,6 +18,7 @@ esac
 SNAPSHOT_ROOT=/var/backup/$SAVESET_NAME
 
 CONFIG=~rsnap/etc/$SAVESET_NAME.conf
+BIN=/var/lib/ilinux/rsnap/bin
 RET=0
 
 il_syslog info START
@@ -25,17 +26,17 @@ il_syslog info START
 # Sync each destination, and inject filename metadata into the backup saveset
 for HOST in $HOSTS; do
   BKPHOST=`hostname -s`
-  SAVESET=`~rsnap/bin/rsnap-start.sh $HOST $SAVESET_NAME`
+  SAVESET=`$BIN/rsnap-start.sh $HOST $SAVESET_NAME`
   if [ $? == 0 ]; then
     rsnapshot -c $CONFIG sync $HOST
     ERR=$?
     if [ $ERR == 0 ]; then
-      ~rsnap/bin/rsnap-inject.sh $HOST $SAVESET_NAME $SNAPSHOT_ROOT/.sync $SAVESET
+      $BIN/rsnap-inject.sh $HOST $SAVESET_NAME $SNAPSHOT_ROOT/.sync $SAVESET
       if [ $? != 0 ]; then
         RET=$?
       else
 	il_syslog info "Backgrounding checksum calc for $SAVESET"
-        ~rsnap/bin/rsnap-calc-sums.sh $SNAPSHOT_ROOT $SAVESET &
+        $BIN/rsnap-calc-sums.sh $SNAPSHOT_ROOT $SAVESET &
       fi
     else
       RET=$ERR
@@ -48,7 +49,7 @@ done
 # Rotate the snapshots
 if [ $RET == 0 ]; then
   rsnapshot -c $CONFIG main
-  ~rsnap/bin/rsnap-rotate.sh main
+  $BIN/rsnap-rotate.sh main
 fi
 
 il_syslog info FINISHED
