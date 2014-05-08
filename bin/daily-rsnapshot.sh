@@ -3,7 +3,7 @@
 #  Run this 3 times daily, 1:30 9:30 and 17:30
 
 . /etc/default/source.sh
-HOSTS="mission cumbre"
+HOSTS="cumbre"
 SNAPSHOT_ROOT=/var/backup/daily
 
 HOUR=`date +%H`
