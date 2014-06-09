@@ -47,11 +47,11 @@ if [ $RET == 0 ]; then
     rsnapshot -c $CONFIG daysago
     $BIN/rsnap-rotate.sh daysago
     [ $WEEKDAY == 0 ] && rsnapshot -c $CONFIG weeksago && $BIN/rsnap-rotate.sh weeksago
-    if [ $DAY == 1 ]; then
+    if [ $DAY -eq 1 ]; then
       rsnapshot -c $CONFIG monthsago
       $BIN/rsnap-rotate.sh monthsago
-      [ $MONTH == 9 ] || [ $MONTH == 3 ] && rsnapshot -c $CONFIG semiannually && $BIN/rsnap-rotate.sh semiannually
-      [ $MONTH == 9 ] && rsnapshot -c yearsago && $BIN/rsnap-rotate.sh yearsago
+      [ $MONTH -eq 9 ] || [ $MONTH -eq 3 ] && rsnapshot -c $CONFIG semiannually && $BIN/rsnap-rotate.sh semiannually
+      [ $MONTH -eq 9 ] && rsnapshot -c yearsago && $BIN/rsnap-rotate.sh yearsago
     fi
   fi
 fi
