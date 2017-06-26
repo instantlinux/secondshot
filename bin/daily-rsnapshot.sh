@@ -4,9 +4,9 @@
 
 . /etc/default/source.sh
 if [ `hostname -s` == "cumbre" ]; then
- HOSTS="k2 cumbre jira02"
+ HOSTS="k2 cumbre mckinley"
 else
- HOSTS="cumbre jira02"
+ HOSTS="cumbre mckinley"
 fi
 SNAPSHOT_ROOT=/var/backup/daily
 
