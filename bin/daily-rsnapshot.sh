@@ -4,7 +4,7 @@
 
 . /etc/default/source.sh
 if [ `hostname -s` == "cumbre" ]; then
- HOSTS="k2 cumbre mckinley"
+ HOSTS="k2 cumbre mckinley vinson"
 else
  HOSTS="cumbre mckinley"
 fi
