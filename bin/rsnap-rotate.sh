@@ -5,17 +5,18 @@
 . /etc/default/secure.sh
 INTERVAL=$1
 
-DBHOST=db01
+DBHOST=node2
+DBPORT=18306
 DBNAME=rsnap
 DBUSER=$BKP_USER
 
 BKPHOST=`hostname -s`
-BKPHOST_ID=`mysql -N -h $DBHOST -u $DBUSER -p$BKP_PASSWD $DBNAME -e "SELECT id FROM hosts WHERE hostname='$BKPHOST';"`
+BKPHOST_ID=`mysql -N -h $DBHOST -P $DBPORT -u $DBUSER -p$BKP_PASSWD $DBNAME -e "SELECT id FROM hosts WHERE hostname='$BKPHOST';"`
 RET=0
 
 il_syslog info "Rotating $INTERVAL for $BKPHOST"
 if [ "$INTERVAL" == "hourly" ]; then
-  mysql -h $DBHOST -u $DBUSER -p$BKP_PASSWD $DBNAME <<EOT
+  mysql -h $DBHOST -P $DBPORT -u $DBUSER -p$BKP_PASSWD $DBNAME <<EOT
     DELETE backups FROM backups JOIN savesets ON savesets.id=backups.saveset_id WHERE location='hourly.2' AND backup_host_id=$BKPHOST_ID;
     DELETE FROM savesets WHERE location='hourly.2' AND backup_host_id=$BKPHOST_ID;
     UPDATE savesets SET location=CONCAT('$INTERVAL','.',substr(location,locate('.',location)+1)+1) WHERE location LIKE '$INTERVAL%' AND backup_host_id=$BKPHOST_ID;
@@ -34,7 +35,7 @@ else
      echo "Unknown interval"
      exit 1
   esac
-  mysql -h $DBHOST -u $DBUSER -p$BKP_PASSWD $DBNAME <<EOT
+  mysql -h $DBHOST -P $DBPORT -u $DBUSER -p$BKP_PASSWD $DBNAME <<EOT
     DELETE backups FROM backups JOIN savesets ON savesets.id=backups.saveset_id WHERE location='$INTERVAL.$MAX' AND backup_host_id=$BKPHOST_ID;
     DELETE FROM savesets WHERE location='$INTERVAL.$MAX' AND backup_host_id=$BKPHOST_ID;
     UPDATE savesets SET location=CONCAT('$INTERVAL','.',substr(location,locate('.',location)+1)+1) WHERE location LIKE '$INTERVAL%' AND backup_host_id=$BKPHOST_ID;

@@ -6,11 +6,12 @@ HOST=$1
 VOLUME=$2
 SAVESET="$HOST-$VOLUME-`date +%Y%m%d-%H`"
 
-DBHOST=db01
+DBHOST=node2
+DBPORT=18306
 DBNAME=rsnap
 DBUSER=$BKP_USER
 PATHNAME=/var/backup/daily/hourly.0
-HOST_ID=`mysql -N -h $DBHOST -u $DBUSER -p$BKP_PASSWD $DBNAME -e "SELECT id FROM hosts WHERE hostname='$HOST';"`
+HOST_ID=`mysql -N -h $DBHOST -P $DBPORT -u $DBUSER -p$BKP_PASSWD $DBNAME -e "SELECT id FROM hosts WHERE hostname='$HOST';"`
 BKPHOST=`hostname -s`
 
 if [ "$HOST_ID" == "" ]; then
@@ -20,9 +21,9 @@ if [ "$HOST_ID" == "" ]; then
   exit 1
 fi
 
-BKPHOST_ID=`mysql -N -h $DBHOST -u $DBUSER -p$BKP_PASSWD $DBNAME -e "SELECT id FROM hosts WHERE hostname='$BKPHOST';"`
-SAVESET_ID=`mysql -N -h $DBHOST -u $DBUSER -p$BKP_PASSWD $DBNAME -e "INSERT INTO savesets (saveset,location,host_id,backup_host_id) VALUES ('$SAVESET','.sync','$HOST_ID','$BKPHOST_ID'); SELECT LAST_INSERT_ID();"`
-VOLUME_ID=`mysql -N -h $DBHOST -u $DBUSER -p$BKP_PASSWD $DBNAME -e "SELECT id FROM volumes WHERE volume='$VOLUME';"`
+BKPHOST_ID=`mysql -N -h $DBHOST -P $DBPORT -u $DBUSER -p$BKP_PASSWD $DBNAME -e "SELECT id FROM hosts WHERE hostname='$BKPHOST';"`
+SAVESET_ID=`mysql -N -h $DBHOST -P $DBPORT -u $DBUSER -p$BKP_PASSWD $DBNAME -e "INSERT INTO savesets (saveset,location,host_id,backup_host_id) VALUES ('$SAVESET','.sync','$HOST_ID','$BKPHOST_ID'); SELECT LAST_INSERT_ID();"`
+VOLUME_ID=`mysql -N -h $DBHOST -P $DBPORT -u $DBUSER -p$BKP_PASSWD $DBNAME -e "SELECT id FROM volumes WHERE volume='$VOLUME';"`
 
 if [ "$SAVESET_ID" == "" ] || [ "$VOLUME_ID" == "" ]; then
   echo "Error:  database access failure"

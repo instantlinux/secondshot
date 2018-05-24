@@ -57,19 +57,25 @@ def argument_parser():
         default = '24'
         )
     parser.add_argument('-d',
-		    help = 'database host (Default: localhost)',
+        help = 'database host (Default: localhost)',
         dest = 'dbhost',
         type = str,
         default = 'localhost'
         )
+    parser.add_argument('-P',
+        help = 'database port (Default: 3306)',
+        dest = 'dbport',
+        type = int,
+        default = '3306'
+        )
     parser.add_argument('-n',
-		    help = 'name of database (Default: rsnap)',
+        help = 'name of database (Default: rsnap)',
         dest = 'dbname',
         type = str,
         default = 'rsnap'
         )
     parser.add_argument('-u',
-		    help = 'database user (Default: nagmon)',
+        help = 'database user (Default: nagmon)',
         dest = 'dbuser',
         type = str,
         default = 'nagmon'
@@ -84,7 +90,7 @@ def argument_parser():
 def main():
     args = argument_parser()
     start_time = time.time()
-    db = MySQLdb.connect(host=args.dbhost, user=args.dbuser, passwd=args.dbpass, db=args.dbname)
+    db = MySQLdb.connect(host=args.dbhost, port=args.dbport, user=args.dbuser, passwd=args.dbpass, db=args.dbname)
     cur = db.cursor()
 
     # Look for recent backups
