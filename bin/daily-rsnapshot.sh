@@ -3,6 +3,7 @@
 #  Run this 3 times daily, 1:30 9:30 and 17:30
 
 . /etc/default/source.sh
+export BKP_PASSWD
 if [ `hostname -s` == "cumbre" ]; then
  HOSTS="k2 cumbre mckinley vinson"
 else
@@ -24,7 +25,7 @@ il_syslog info START
 # Sync each destination, and inject filename metadata into the backup saveset
 for HOST in $HOSTS; do
   BKPHOST=`hostname -s`
-  SAVESET=`$BIN/rsnap-start.sh $HOST daily-$BKPHOST`
+  SAVESET=`$BIN/rsnap.py --action=start --host=$HOST --volume=daily-$BKPHOST`
   if [ $? == 0 ]; then
     rsnapshot -c $CONFIG sync $HOST
     ERR=$?

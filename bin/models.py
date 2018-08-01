@@ -12,7 +12,8 @@ metadata = Base.metadata
 class Host(Base):
     __tablename__ = 'hosts'
 
-    id = Column(INTEGER(10), primary_key=True, unique=True)
+    id = Column(INTEGER, primary_key=True, unique=True,
+                autoincrement=True)
     hostname = Column(String(45), nullable=False, unique=True)
     created = Column(TIMESTAMP, nullable=False,
                      server_default=text("current_timestamp()"))
@@ -25,19 +26,20 @@ class File(Base):
               'uid', 'gid', unique=True),
     )
 
-    id = Column(INTEGER(10), primary_key=True, nullable=False, unique=True)
+    id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
+                autoincrement=True)
     path = Column(String(255), nullable=False)
     filename = Column(String(255), nullable=False)
     owner = Column(String(48))
     grp = Column(String(48))
-    uid = Column(INTEGER(10), nullable=False)
-    gid = Column(INTEGER(10), nullable=False)
-    mode = Column(INTEGER(10), nullable=False)
-    size = Column(BIGINT(19), nullable=False)
+    uid = Column(INTEGER, nullable=False)
+    gid = Column(INTEGER, nullable=False)
+    mode = Column(INTEGER, nullable=False)
+    size = Column(BIGINT, nullable=False)
     ctime = Column(TIMESTAMP)
     mtime = Column(TIMESTAMP)
     type = Column(Enum(u'c', u'd', u'f', u'l', u's'), nullable=False)
-    links = Column(INTEGER(10), nullable=False, server_default=text("1"))
+    links = Column(INTEGER, nullable=False, server_default=text("1"))
     sparseness = Column(Float, nullable=False, server_default=text("1"))
     sha256sum = Column(CHAR(64))
     first_backup = Column(TIMESTAMP, nullable=False,
@@ -52,7 +54,8 @@ class File(Base):
 class Saveset(Base):
     __tablename__ = 'savesets'
 
-    id = Column(INTEGER(10), primary_key=True, nullable=False, unique=True)
+    id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
+                autoincrement=True)
     saveset = Column(String(45), nullable=False, unique=True)
     location = Column(String(32))
     created = Column(TIMESTAMP, nullable=False,
@@ -71,10 +74,11 @@ class Saveset(Base):
 class Volume(Base):
     __tablename__ = 'volumes'
 
-    id = Column(INTEGER(10), primary_key=True, nullable=False, unique=True)
+    id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
+                autoincrement=True)
     volume = Column(String(45), nullable=False, unique=True)
     path = Column(String(255), nullable=False)
-    size = Column(BIGINT(19))
+    size = Column(BIGINT)
     created = Column(TIMESTAMP, nullable=False,
                      server_default=text("current_timestamp()"))
     removable = Column(TINYINT(1), nullable=False, server_default=text("0"))
@@ -88,7 +92,8 @@ class Volume(Base):
 class Backup(Base):
     __tablename__ = 'backups'
 
-    id = Column(INTEGER(10), primary_key=True, nullable=False, unique=True)
+    id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
+                autoincrement=True)
     saveset_id = Column(ForeignKey(u'savesets.id'), primary_key=True,
                         nullable=False, index=True)
     volume_id = Column(ForeignKey(u'volumes.id'), primary_key=True,
