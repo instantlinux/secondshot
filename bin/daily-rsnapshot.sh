@@ -30,12 +30,14 @@ for HOST in $HOSTS; do
     rsnapshot -c $CONFIG sync $HOST
     ERR=$?
     if [ $ERR == 0 ]; then
-      $BIN/rsnap-inject.sh $HOST daily-$BKPHOST $SNAPSHOT_ROOT/.sync $SAVESET
-      if [ $? != 0 ]; then
-        RET=$?
-      else
-        $BIN/rsnap-calc-sums.sh $SNAPSHOT_ROOT $SAVESET
-      fi
+#     $BIN/rsnap-inject.sh $HOST daily-$BKPHOST $SNAPSHOT_ROOT/.sync $SAVESET
+      $BIN/rsnap.py --action=inject --host=$HOST --volume=daily-$BKPHOST \
+        --pathname=$SNAPSHOT_ROOT/.sync --saveset-id=$SAVESET
+#      if [ $? != 0 ]; then
+#        RET=$?
+#      else
+#        $BIN/rsnap-calc-sums.sh $SNAPSHOT_ROOT $SAVESET
+#      fi
     else
       RET=$ERR
     fi

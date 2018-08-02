@@ -39,10 +39,12 @@ Options:
 import datetime
 import docopt
 import grp
+import hashlib
 import logging
 import logging.handlers
 import os
 import os.path
+import pymysql
 import pwd
 import socket
 from sqlalchemy import create_engine
@@ -79,12 +81,51 @@ class RsnapShot(object):
         """Create backup archives"""
         raise NotImplementedError
 
-    def calc_sums(self):
+    def calc_sums(self, saveset_id):
         """Calculate checksums"""
-        raise NotImplementedError
+        try:
+            host = self.session.query(models.Saveset).filter_by(
+                id=saveset_id).one().host.hostname
+            location = self.session.query(models.Saveset).filter_by(
+                id=saveset_id).one().location
+            missing_sha = self.session.query(models.Backup). \
+                join(models.Backup.file). \
+                filter(models.Backup.saveset_id == saveset_id). \
+                filter(models.File.sha256sum is None). \
+                filter(models.File.type == 'f'). \
+                filter(models.File.size > 0)
+        except Exception as ex:
+            logger.error('action=calc_sums msg=%s' % ex.message)
+        if (not host or not location):
+            logger.error('action=calc_sums msg=missing host/location')
+            exit(1)
+        total = self.session.query(sqlalchemy.sql.func.sum(
+            models.File.size).label('total')).filter(
+            models.Backup.saveset_id == saveset_id).join(
+            models.Backup, models.File.id == models.Backup.file_id).one()[0]
+        logger.info("action=calc_sums started for files (size=%.3fGB) from "
+                    "host=%s for location=%s" %
+                    (float(total) / 1e9, host, location))
+        bytes = 0
+        for record in missing_sha:
+            try:
+                with open('%s/%s' % (
+                        record.file.path, record.file.filename), 'r') as f:
+                    sha256 = hashlib.sha256(f.read()).hexdigest()
+                record.file.sha256sum = sha256
+                self.session.add(record.file)
+                bytes += record.file.size
+            except Exception as ex:
+                logger.error("action=calc_sums id=%d msg=skipped" %
+                             record.file.id)
+        self.session.commit()
+        logger.info("FINISHED action=calc_sums size=%.3fGB" % (
+            bytes / 1e9))
 
     def inject(self, host, volume, pathname, saveset_id):
-        """Inject pathnames from filesystem into database
+        """Inject pathnames from filesystem into database;
+        if successful, also calculate sha256sums for any
+        missing entries
 
         Args:
             host (str):       host from which to copy files
@@ -93,48 +134,88 @@ class RsnapShot(object):
             saveset_id (int): record ID of new saveset
         """
         try:
-            vol = self.session.query(models.Volume).filter_by(volume=volume).one()
+            vol = self.session.query(models.Volume).filter_by(
+                volume=volume).one()
             host_record = self.session.query(models.Host).filter_by(
                 hostname=host).one()
-            saveset = self.session.query(models.Saveset).filter_by(id=saveset_id).one()
+            saveset = self.session.query(models.Saveset).filter_by(
+                id=saveset_id).one()
         except Exception as ex:
             logger.error('action=inject message=%s' % ex.message)
             raise ValueError('Invalid host or volume: %s' % ex.message)
         count = 0
         for dirpath, dirnames, filenames in os.walk(pathname):
             for filename in filenames:
-                full_path = os.path.join(dirpath, filename)
-                stat = os.stat(full_path)
-                record = models.File(
-                    path=dirpath,
-                    filename=filename,
-                    ctime=stat.st_ctime,
+                try:
+                    stat = os.stat(os.path.join(dirpath, filename))
+                except OSError as ex:
+                    if ex.errno != 2:
+                        logger.error(
+                            'action=inject count=%d filename=%s message=%s' %
+                            (count, filename, ex.message))
+                        raise
+                    continue
+                record = dict(
+                    path=pymysql.escape_string(dirpath),
+                    filename=pymysql.escape_string(filename),
+                    ctime=datetime.datetime.fromtimestamp(
+                        stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S'),
                     gid=stat.st_gid,
-                    # grp=grp.getgrgid(stat.st_gid).gr_name,
-                    last_backup=sqlalchemy.func.now(),
+                    last_backup=datetime.datetime.now().strftime(
+                        '%Y-%m-%d %H:%M:%S'),
                     links=stat.st_nlink,
                     mode=stat.st_mode,
-                    mtime=stat.st_mtime,
-                    # owner=pwd.getpwuid(stat.st_uid).pw_name,
+                    mtime=datetime.datetime.fromtimestamp(
+                        stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
                     size=stat.st_size,
                     sparseness=1,
                     type=self._filetype(stat.st_mode),
                     uid=stat.st_uid,
-                    host=host_record)
-                print full_path + ':' + str(stat)
-                print record
-                item = models.Backup(
-                    saveset=saveset,
-                    volume=vol,
-                    file=record)
-                self.session.add(record)
-                self.session.add(item)
+                    host_id=host_record.id)
+                try:
+                    owner = pwd.getpwuid(stat.st_uid).pw_name
+                    group = grp.getgrgid(stat.st_gid).gr_name
+                except KeyError:
+                    pass
+
+                # Bypass sqlalchemy for ON DUPLICATE KEY UPDATE and
+                # LAST_INSERT_ID functionality
+                try:
+                    self.session.execute(
+                        u"INSERT INTO files (%(columns)s) VALUES('%(values)s')"
+                        u" ON DUPLICATE KEY UPDATE owner='%(owner)s',"
+                        u"grp='%(group)s',id=LAST_INSERT_ID(id),"
+                        u"last_backup=NOW();" % dict(
+                            columns=','.join(record.keys()),
+                            values="','".join(str(item) for item
+                                              in record.values()),
+                            owner=owner, group=group))
+                    self.session.execute(
+                        "INSERT INTO backups (saveset_id,volume_id,file_id) "
+                        "VALUES(%(saveset_id)d,%(volume_id)d,"
+                        "LAST_INSERT_ID());" %
+                        dict(saveset_id=saveset.id, volume_id=vol.id))
+                except UnicodeDecodeError as ex:
+                    logger.error(u"action=inject dir=%s file=%s msg=%s" %
+                                 (dirpath, filename.encode('ascii', 'ignore'),
+                                  ex.message))
+                except Exception as ex:
+                    logger.error(u"action=inject dir=%s file=%s msg=%s" %
+                                 (dirpath, filename, ex.message))
                 count += 1
-        self.session.commit()
+                if (count % 1000 == 0):
+                    logger.info('action=inject count=%d' % count)
+        try:
+            self.session.commit()
+        except Exception as ex:
+            logger.error('action=inject msg=%s' % ex.message)
+            exit(1)
         saveset.finished = sqlalchemy.func.now()
         self.session.add(saveset)
         self.session.commit()
-        logger.info('FINISHED %s, file_count=%d' % (saveset.saveset, count))
+        logger.info('FINISHED action=inject saveset=%s, file_count=%d' % (
+            saveset.saveset, count))
+        self.calc_sums(saveset.id)
 
     def rotate(self, interval):
         """Rotate backup entries based on specified interval
@@ -175,16 +256,14 @@ class RsnapShot(object):
         try:
             self.session.commit()
         except sqlalchemy.exc.IntegrityError as ex:
-            print >>sys.stderr, 'ERROR: %s' % ex.message
             logger.error(ex.message)
             exit(1)
-        logger.info('START %s' % saveset.saveset)
+        logger.info('START saveset=%s' % saveset.saveset)
         return saveset.id
 
     def list_hosts(self):
         """List hosts"""
-        items = self.session.query(
-            models.Host).order_by('hostname')
+        items = self.session.query(models.Host).order_by('hostname')
         for item in items:
             print item.hostname
 
@@ -207,8 +286,10 @@ class RsnapShot(object):
         Args:
            mode (int): mode bits returned by os.stat()
         Returns:
-           char:  character-special, directory, file, link (symbolic), pipe, socket
+           char:  character-special, directory, file, link (symbolic),
+                  pipe, socket
         """
+
         if (stat.S_ISCHR(mode)):
             return 'c'
         elif (stat.S_ISDIR(mode)):
@@ -223,6 +304,7 @@ class RsnapShot(object):
             return 's'
         else:
             raise RuntimeError('Unexpected file mode %d' % mode)
+
 
 class Syslog(object):
     def __init__(self):
@@ -243,6 +325,7 @@ class Syslog(object):
             severity, msg)
 
     def error(self, msg):
+        print >>sys.stderr, "ERROR: %s" % msg
         self.logger.error('%s %s' % (self.prog, msg))
         with open(self.logfile, 'a') as f:
             f.write(self._date_prefix('E', msg))
@@ -255,7 +338,6 @@ class Syslog(object):
 
 def main():
     global logger
-
     opts = docopt.docopt(__doc__)
     obj = RsnapShot(opts)
     logger = Syslog()
@@ -273,8 +355,9 @@ def main():
         result = obj.start(opts['--host'], opts['--volume'])
         print result
     elif (opts['--action'] == 'inject'):
-        result = obj.inject(opts['--host'], opts['--volume'], opts['--pathname'],
-                            int(opts['--saveset-id']))
+        result = obj.inject(
+            opts['--host'], opts['--volume'], opts['--pathname'],
+            int(opts['--saveset-id']))
     elif (opts['--action'] == 'rotate'):
         result = obj.rotate(opts['--interval'])
     else:
