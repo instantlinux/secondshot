@@ -141,6 +141,8 @@ class RsnapShot(object):
         self.session.commit()
         logger.info("FINISHED action=calc_sums saveset=%s processed=%.3fGB" % (
             saveset, float(bytes) / 1e9))
+        return {'calc_sums': dict(
+            status='ok', saveset=saveset, size=total, processed=bytes)}
 
     def inject(self, host, volume, pathname, saveset_id):
         """Inject pathnames from filesystem into database;
@@ -152,6 +154,8 @@ class RsnapShot(object):
             volume (str):     saveset's volume name
             pathname (str):   path where current backup is stored
             saveset_id (int): record ID of new saveset
+        Returns:
+            result (dict):    results summary
         """
         try:
             vol = self.session.query(models.Volume).filter_by(
@@ -174,10 +178,12 @@ class RsnapShot(object):
                 except OSError as ex:
                     if ex.errno != 2:
                         logger.error(
-                            'action=inject count=%d filename=%s message=%s' %
-                            (count, filename, ex.message))
+                            'action=inject filename=%s message=%s' %
+                            (filename, ex.message))
                         raise
                     skipped += 1
+                    logger.debug('action=inject path=%s filename=%s msg=%s' % (
+                        dirpath, filename, ex.message))
                     continue
                 except UnicodeDecodeError as ex:
                     msg = 'action=inject inode=inode=%d dev=%s' % (
@@ -245,6 +251,9 @@ class RsnapShot(object):
         self.session.commit()
         logger.info('FINISHED action=inject saveset=%s, file_count=%d, '
                     'skipped=%d' % (saveset.saveset, count, skipped))
+        return {'inject': dict(
+            status='ok', saveset=saveset.saveset, file_count=count,
+            skipped=skipped)}
 
     def rotate(self, interval):
         """Rotate backup entries based on specified interval
@@ -309,11 +318,21 @@ class RsnapShot(object):
             logger.info('action=rotate host=%s savesets=%d location=%s.0 '
                         'prev=%s' % (self.backup_host, count, interval, prev))
         self.session.commit()
-        return {'rotate': results}
+        return {'rotate': dict(status='ok', actions=results)}
 
     def start(self, hosts, volume):
+        """Start a backup for each of the specified hosts
+        Args:
+            hosts (list):  hosts to back up
+            volume (str): volume path of destination
+
+        Returns:
+            dict: operations performed
+        """
         if (len(hosts) == 0):
             self._exit('action=start must specify at least one --host')
+        results = []
+        status = 'ok'
         for host in hosts:
             saveset_id = self.new_saveset(host, volume)
             try:
@@ -321,17 +340,22 @@ class RsnapShot(object):
                                        self.rsnapshot_conf, 'sync', host])
             except Exception as ex:
                 logger.error('action=start subprocess error=%s' % ex.message)
+                status = 'error'
                 continue
             if (ret != 0):
                 logger.error('action=start rsnapshot process error=%d' % ret)
+                status = 'error'
                 continue
             try:
-                self.inject(host, volume,
-                           '%s/.sync' % self.snapshot_root, saveset_id)
+                results.append(
+                    self.inject(host, volume, '%s/.sync' % self.snapshot_root,
+                                saveset_id))
             except Exception as ex:
                 logger.error('action=start inject error=%s' % ex.message)
+                status = 'error'
                 continue
-            self.calc_sums(saveset_id)
+            results.append(self.calc_sums(saveset_id))
+        return {'start': dict(status=status, results=results)}
 
     def new_saveset(self, host, volume):
         """Set up new saveset entry in database
@@ -417,9 +441,9 @@ class RsnapShot(object):
         if (errors):
             raise RuntimeError('VERIFY saveset=%s errors=%d' % (
                 saveset, errors))
-        return {'verify': [{
+        return {'verify': dict(status='ok', results=[{
             'saveset': saveset, 'count': count, 'errors': errors,
-            'missing': missing}]}
+            'missing': missing}])}
 
     def list_hosts(self, filter):
         """List hosts"""
@@ -506,7 +530,7 @@ class Syslog(object):
             print >>sys.stderr, "DEBUG: %s" % msg
             self.logger.debug('%s %s' % (self.prog, msg))
             with open(self.logfile, 'a') as f:
-                f.write(self._date_prefix('W', msg))
+                f.write(self._date_prefix('D', msg))
 
     def error(self, msg):
         print >>sys.stderr, "ERROR: %s" % msg
@@ -577,13 +601,10 @@ def main():
     obj = RsnapShot(opts)
     logger = Syslog()
     obj.rsnapshot_cfg = ReadConfig().rsnapshot_cfg(opts['--rsnapshot-conf'])
-    try:
+    if ('snapshot_root' in obj.rsnapshot_cfg):
         obj.snapshot_root = obj.rsnapshot_cfg['snapshot_root'].rstrip('/')
-    except KeyError:
-        pass
-
+    filter = opts['--filter'].replace('*', '%')
     result = {}
-    opts['--filter'] = opts['--filter'].replace('*', '%')
 
     if (opts['--logfile']):
         logger.logfile = opts['--logfile']
@@ -591,11 +612,11 @@ def main():
         logger.log_level = logging.DEBUG
 
     if (opts['--list-hosts']):
-        result = obj.list_hosts(filter=opts['--filter'])
+        result = obj.list_hosts(filter=filter)
     elif (opts['--list-savesets']):
-        result = obj.list_savesets(filter=opts['--filter'])
+        result = obj.list_savesets(filter=filter)
     elif (opts['--list-volumes']):
-        result = obj.list_volumes(filter=opts['--filter'])
+        result = obj.list_volumes(filter=filter)
     elif (opts['--verify']):
         result = obj.verify(opts['--verify'])
     elif (opts['--action'] == 'start'):
@@ -607,7 +628,7 @@ def main():
 
     if (obj.format == 'json'):
         print json.dumps(result)
-    elif (obj.format == 'text' and result.keys()[0] in [
+    elif (obj.format == 'text' and result and result.keys()[0] in [
             'hosts', 'savesets', 'volumes']):
         for item in result[result.keys()[0]]:
             print item['name']
