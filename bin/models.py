@@ -1,7 +1,7 @@
 # coding: utf-8
-from sqlalchemy import BIGINT, CHAR, Column, Enum, Float, ForeignKey, INTEGER, \
-     Index, String, TIMESTAMP, text
-from sqlalchemy.orm import relationship
+from sqlalchemy import BIGINT, CHAR, Column, Enum, Float, ForeignKey, \
+     INTEGER, Index, String, TIMESTAMP, text
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.dialects.mysql.types import TINYINT
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -69,6 +69,7 @@ class Saveset(Base):
     backup_host = relationship(
         'Host', primaryjoin='Saveset.backup_host_id == Host.id')
     host = relationship('Host', primaryjoin='Saveset.host_id == Host.id')
+    backup = relationship('Backup')
 
 
 class Volume(Base):
@@ -94,13 +95,13 @@ class Backup(Base):
 
     id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
                 autoincrement=True)
-    saveset_id = Column(ForeignKey(u'savesets.id'), primary_key=True,
-                        nullable=False, index=True)
+    saveset_id = Column(ForeignKey(u'savesets.id', ondelete='CASCADE'),
+                        primary_key=True, nullable=False, index=True)
     volume_id = Column(ForeignKey(u'volumes.id'), primary_key=True,
                        nullable=False, index=True)
     file_id = Column(ForeignKey(u'files.id'), primary_key=True, nullable=False,
                      index=True)
 
     file = relationship('File')
-    saveset = relationship('Saveset')
+    saveset = relationship('Saveset', cascade='all,delete')
     volume = relationship('Volume')

@@ -5,11 +5,10 @@
 . /etc/default/source.sh
 export BKP_PASSWD
 if [ `hostname -s` == "cumbre" ]; then
- HOSTS="k2 cumbre mckinley vinson"
+ HOSTS="--host=k2 --host=cumbre --host=mckinley --host=vinson"
 else
- HOSTS="cumbre mckinley"
+ HOSTS="--host=cumbre --host=mckinley"
 fi
-SNAPSHOT_ROOT=/var/backup/daily
 
 HOUR=`date +%H`
 WEEKDAY=`date +%w`
@@ -18,47 +17,22 @@ MONTH=`date +%m`
 
 CONFIG=/var/lib/ilinux/rsnap/etc/backup-daily.conf
 BIN=/var/lib/ilinux/rsnap/bin
-RET=0
 
 il_syslog info START
 
-# Sync each destination, and inject filename metadata into the backup saveset
-for HOST in $HOSTS; do
-  BKPHOST=`hostname -s`
-  SAVESET=`$BIN/rsnap.py --action=start --host=$HOST --volume=daily-$BKPHOST`
-  if [ $? == 0 ]; then
-    rsnapshot -c $CONFIG sync $HOST
-    ERR=$?
-    if [ $ERR == 0 ]; then
-#     $BIN/rsnap-inject.sh $HOST daily-$BKPHOST $SNAPSHOT_ROOT/.sync $SAVESET
-      $BIN/rsnap.py --action=inject --host=$HOST --volume=daily-$BKPHOST \
-        --pathname=$SNAPSHOT_ROOT/.sync --saveset-id=$SAVESET
-#      if [ $? != 0 ]; then
-#        RET=$?
-#      else
-#        $BIN/rsnap-calc-sums.sh $SNAPSHOT_ROOT $SAVESET
-#      fi
-    else
-      RET=$ERR
-    fi
-  else
-    RET=1
-  fi
-done
+$BIN/rsnap.py --action=start --volume=daily-$(hostname -s) $HOSTS
+RET=$?
 
 # Rotate the snapshots
 if [ $RET == 0 ]; then
-  rsnapshot -c $CONFIG hourly
-  $BIN/rsnap-rotate.sh hourly
+  rsnapshot -c $CONFIG hourly && $BIN/rsnap.py --action=rotate --interval=hourly
   if [ $HOUR -le 02 ]; then
-    rsnapshot -c $CONFIG daysago
-    $BIN/rsnap-rotate.sh daysago
+    rsnapshot -c $CONFIG daysago && $BIN/rsnap.py --action=rotate --interval=daysago
     [ $WEEKDAY == 0 ] && rsnapshot -c $CONFIG weeksago && $BIN/rsnap-rotate.sh weeksago
     if [ $DAY -eq 1 ]; then
-      rsnapshot -c $CONFIG monthsago
-      $BIN/rsnap-rotate.sh monthsago
-      [ $MONTH -eq 9 ] || [ $MONTH -eq 3 ] && rsnapshot -c $CONFIG semiannually && $BIN/rsnap-rotate.sh semiannually
-      [ $MONTH -eq 9 ] && rsnapshot -c yearsago && $BIN/rsnap-rotate.sh yearsago
+      rsnapshot -c $CONFIG monthsago && $BIN/rsnap.py --action=rotate --interval=monthsago
+      [ $MONTH -eq 9 ] || [ $MONTH -eq 3 ] && rsnapshot -c $CONFIG semiannually && $BIN/rsnap.py --action=rotate --interval=semiannually
+      [ $MONTH -eq 9 ] && rsnapshot -c yearsago && $BIN/rsnap.py --action=rotate --interval=yearsago
     fi
   fi
 fi

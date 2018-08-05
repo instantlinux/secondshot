@@ -6,31 +6,36 @@ created 28-jul-2018 by richb@instantlinux.net
 Usage:
   rsnap.py [--action=ACTION] [--dbhost=HOST] [--dbuser=USER] [--dbpass=PASS]
            [--dbname=DB] [--dbport=PORT]
-           [--backup-host=HOST] [--host=HOST] [--logfile=FILE]
-           [--snapshot-root=PATH]
+           [--backup-host=HOST] [--host=HOST]... [--logfile=FILE]
+           [--list-hosts] [--list-savesets] [--list-volumes]
+           [--filter=STR] [--format=FORMAT]
+           [--rsnapshot-conf=FILE]
            [--volume=VOL] [-v]...
   rsnap.py --action=start --host=HOST --volume=VOL
-  rsnap.py --action=inject --host=HOST --volume=VOL --pathname=PATH
-           [--saveset-id=ID]
   rsnap.py --action=rotate --interval=INTERVAL
+  rsnap.py --verify=SAVESET [--format=FORMAT]
   rsnap.py (-h | --help)
 
 Options:
-  --action=ACTION       Action to take (archive, calc-sums, inject,
-                        rotate, start, list-savesets)
+  --action=ACTION       Action to take (archive, rotate, start)
   --backup-host=HOST    Hostname taking the backup
   --dbhost=HOST         DB host [default: db00]
-  --dbpass=PASS         DB password
   --dbname=DB           DB name [default: rsnap]
   --dbport=PORT         DB port [default: 18306]
   --dbuser=USER         DB user [default: bkp]
-  --host=HOST           Source host to back up
+  --dbpass=PASS         DB password
+  --host=HOST           Source host(s) to back up
   --interval=INTERVAL   Rotation interval: hourly, daysago, weeksago,
                         semiannually, yearsago or main
+  --list-hosts          List hosts
+  --list-savesets       List savesets
+  --list-volumes        List volumes
+  --filter=STR          Filter to limit listing [default: *]
+  --format=FORMAT       Format (text or json) [default: text]
   --logfile=FILE        Logging destination
-  --saveset-id=ID       ID of saveset
-  --snapshot-root=PATH  Top-level directory to hold
-                        snapshots [default: /var/backup/daily]
+  --rsnapshot-conf=FILE Path of rsnapshot's config file
+                        [default: /var/lib/ilinux/rsnap/etc/backup-daily.conf]
+  --verify=SAVESET      Verify checksums of stored files
   --volume=VOLUME       Volume to back up
   -v --verbose          Verbose output
   -h --help             List options
@@ -40,6 +45,7 @@ import datetime
 import docopt
 import grp
 import hashlib
+import json
 import logging
 import logging.handlers
 import os
@@ -50,9 +56,13 @@ import socket
 from sqlalchemy import create_engine
 import sqlalchemy.orm
 import stat
+import subprocess
 import sys
 
 import models
+
+SNAPSHOT_ROOT = '/var/backup'
+SYNC_PATH = '.sync'
 
 
 class RsnapShot(object):
@@ -64,7 +74,15 @@ class RsnapShot(object):
         else:
             pw = os.environ['BKP_PASSWD']
         self.backup_host = socket.gethostname().split('.')[0]
-        self.snapshot_root = opts['--snapshot-root']
+        if (opts['--format'] in ['json', 'text']):
+            self.format = opts['--format']
+        else:
+            self._exit('format must be json or text')
+        self.rsnapshot_conf = opts['--rsnapshot-conf']
+        self.sequence = ['hourly', 'daysago', 'weeksago', 'monthsago',
+                         'semiannually', 'yearsago']
+        self.snapshot_root = SNAPSHOT_ROOT
+        self.time_fmt = '%Y-%m-%d %H:%M:%S'
         self.engine = create_engine(
             'mysql+pymysql://%(user)s:%(password)s@%(endpoint)s/%(database)s'
             % {
@@ -90,24 +108,26 @@ class RsnapShot(object):
                 id=saveset_id).one().location
             missing_sha = self.session.query(models.Backup). \
                 join(models.Backup.file). \
-                filter(models.Backup.saveset_id == saveset_id). \
-                filter(models.File.sha256sum is None). \
-                filter(models.File.type == 'f'). \
-                filter(models.File.size > 0)
+                filter(models.Backup.saveset_id == saveset_id,
+                       models.File.sha256sum is None,
+                       models.File.type == 'f',
+                       models.File.size > 0)
+            saveset = self.session.query(models.Saveset).filter_by(
+                id=saveset_id).one().saveset
         except Exception as ex:
-            logger.error('action=calc_sums msg=%s' % ex.message)
+            logger.warn('action=calc_sums msg=%s' % ex.message)
         if (not host or not location):
-            logger.error('action=calc_sums msg=missing host/location')
-            exit(1)
+            self._exit('action=calc_sums msg=missing host/location')
         total = self.session.query(sqlalchemy.sql.func.sum(
             models.File.size).label('total')).filter(
             models.Backup.saveset_id == saveset_id).join(
             models.Backup, models.File.id == models.Backup.file_id).one()[0]
-        logger.info("action=calc_sums started for files (size=%.3fGB) from "
+        logger.info("START action=calc_sums saveset=%s (size=%.3fGB) from "
                     "host=%s for location=%s" %
-                    (float(total) / 1e9, host, location))
+                    (saveset, float(total) / 1e9, host, location))
         bytes = 0
         for record in missing_sha:
+            logger.debug('action=calc_sums filename=%s' % record.file.filename)
             try:
                 with open('%s/%s' % (
                         record.file.path, record.file.filename), 'r') as f:
@@ -116,11 +136,11 @@ class RsnapShot(object):
                 self.session.add(record.file)
                 bytes += record.file.size
             except Exception as ex:
-                logger.error("action=calc_sums id=%d msg=skipped" %
-                             record.file.id)
+                logger.warn("action=calc_sums id=%d msg=skipped" %
+                            record.file.id)
         self.session.commit()
-        logger.info("FINISHED action=calc_sums size=%.3fGB" % (
-            bytes / 1e9))
+        logger.info("FINISHED action=calc_sums saveset=%s processed=%.3fGB" % (
+            saveset, float(bytes) / 1e9))
 
     def inject(self, host, volume, pathname, saveset_id):
         """Inject pathnames from filesystem into database;
@@ -141,32 +161,46 @@ class RsnapShot(object):
             saveset = self.session.query(models.Saveset).filter_by(
                 id=saveset_id).one()
         except Exception as ex:
-            logger.error('action=inject message=%s' % ex.message)
-            raise ValueError('Invalid host or volume: %s' % ex.message)
-        count = 0
+            self._exit('action=inject Invalid host or volume: %s' % ex.message)
+        (count, skipped) = (0, 0)
         for dirpath, dirnames, filenames in os.walk(pathname):
             for filename in filenames:
                 try:
                     stat = os.stat(os.path.join(dirpath, filename))
+                    _path = pymysql.escape_string(dirpath.encode(
+                            'unicode_escape'))
+                    _filename = pymysql.escape_string(filename.encode(
+                            'unicode_escape'))
                 except OSError as ex:
                     if ex.errno != 2:
                         logger.error(
                             'action=inject count=%d filename=%s message=%s' %
                             (count, filename, ex.message))
                         raise
+                    skipped += 1
+                    continue
+                except UnicodeDecodeError as ex:
+                    msg = 'action=inject inode=inode=%d dev=%s' % (
+                        stat.st_ino, stat.st_dev)
+                    try:
+                        msg += ' path=%s filename=%s' % (dirpath, filename)
+                    except Exception:
+                        pass
+                    skipped += 1
+                    logger.debug(msg)
                     continue
                 record = dict(
-                    path=pymysql.escape_string(dirpath),
-                    filename=pymysql.escape_string(filename),
+                    path=_path,
+                    filename=_filename,
                     ctime=datetime.datetime.fromtimestamp(
-                        stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S'),
+                        stat.st_ctime).strftime(self.time_fmt),
                     gid=stat.st_gid,
                     last_backup=datetime.datetime.now().strftime(
                         '%Y-%m-%d %H:%M:%S'),
                     links=stat.st_nlink,
                     mode=stat.st_mode,
                     mtime=datetime.datetime.fromtimestamp(
-                        stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                        stat.st_mtime).strftime(self.time_fmt),
                     size=stat.st_size,
                     sparseness=1,
                     type=self._filetype(stat.st_mode),
@@ -176,7 +210,8 @@ class RsnapShot(object):
                     owner = pwd.getpwuid(stat.st_uid).pw_name
                     group = grp.getgrgid(stat.st_gid).gr_name
                 except KeyError:
-                    pass
+                    owner = None
+                    group = None
 
                 # Bypass sqlalchemy for ON DUPLICATE KEY UPDATE and
                 # LAST_INSERT_ID functionality
@@ -195,37 +230,110 @@ class RsnapShot(object):
                         "VALUES(%(saveset_id)d,%(volume_id)d,"
                         "LAST_INSERT_ID());" %
                         dict(saveset_id=saveset.id, volume_id=vol.id))
-                except UnicodeDecodeError as ex:
-                    logger.error(u"action=inject dir=%s file=%s msg=%s" %
-                                 (dirpath, filename.encode('ascii', 'ignore'),
-                                  ex.message))
                 except Exception as ex:
-                    logger.error(u"action=inject dir=%s file=%s msg=%s" %
-                                 (dirpath, filename, ex.message))
+                    skipped += 1
+                    logger.warn('action=inject path=%s filename=%s message=%s'
+                                % (dirpath, filename, ex.message))
                 count += 1
-                if (count % 1000 == 0):
-                    logger.info('action=inject count=%d' % count)
-        try:
-            self.session.commit()
-        except Exception as ex:
-            logger.error('action=inject msg=%s' % ex.message)
-            exit(1)
+                if (count % 5000 == 0):
+                    logger.debug('action=inject count=%d' % count)
+                    self.session.commit()
+
+        self.session.commit()
         saveset.finished = sqlalchemy.func.now()
         self.session.add(saveset)
         self.session.commit()
-        logger.info('FINISHED action=inject saveset=%s, file_count=%d' % (
-            saveset.saveset, count))
-        self.calc_sums(saveset.id)
+        logger.info('FINISHED action=inject saveset=%s, file_count=%d, '
+                    'skipped=%d' % (saveset.saveset, count, skipped))
 
     def rotate(self, interval):
         """Rotate backup entries based on specified interval
         Args:
-            interval (str): Valid values are hourly, daysago, weeksago,
-                            semiannually, yearsago or main
-        """
-        raise NotImplementedError
+            interval (str): Values such hourly, daysago as defined by
+                            'interval' keyword in rsnapshot conf file
 
-    def start(self, host, volume):
+        Returns:
+            response (dict): rotation actions taken, if any
+        """
+        results = []
+        if (interval not in self.rsnapshot_cfg['interval']):
+            self._exit(
+                'action=rotate interval=%s must be in %s' %
+                (interval, ','.join(sorted(self.rsnapshot_cfg[
+                    'interval'].keys()))))
+        host_record = self.session.query(models.Host).filter_by(
+            hostname=self.backup_host).one()
+        interval_max = int(self.rsnapshot_cfg['interval'][interval])
+
+        # figure out oldest item in previous interval
+        if (interval in ['hourly', 'main']):
+            prev = SYNC_PATH
+        elif (interval in self.sequence):
+            prev = self.sequence[self.sequence.index(interval) - 1]
+            prev += ".%d" % int(self.rsnap_cfg['interval'][prev] - 1)
+        else:
+            self._exit('unrecognized interval %s' % interval)
+
+        # delete savesets that match <interval>.<interval_max - 1>
+        count = self.session.query(models.Saveset).filter_by(
+            location='%s.%d' % (interval, interval_max - 1),
+            backup_host_id=host_record.id).delete()
+        if (count > 0):
+            results.append(dict(
+                host=self.backup_host,
+                location='%s.%d' % (interval, interval_max - 1),
+                savesets=count))
+            logger.info(
+                'action=rotate host=%s location=%s.%d savesets=%d removed' %
+                (self.backup_host, interval, interval_max - 1, count))
+
+        # move all savesets location <interval>.<n> => <n+1>
+        self.session.execute(
+            "UPDATE savesets SET location=CONCAT('%(interval)s','.',"
+            "SUBSTR(location,locate('.',location)+1)+1) WHERE "
+            "location LIKE '%(interval)s%%' AND backup_host_id=%(host)d" % {
+                'interval': interval, 'host': host_record.id})
+
+        # move saveset location=<previous int> to <interval>.0
+        count = self.session.query(models.Saveset).filter(
+            models.Saveset.location == prev,
+            models.Saveset.backup_host_id == host_record.id,
+            models.Saveset.finished is not None).update({
+                models.Saveset.location: '%s.0' % interval})
+        if (count > 0):
+            results.append(dict(
+                host=self.backup_host,
+                savesets=count,
+                location='%s.0' % interval,
+                prev=prev))
+            logger.info('action=rotate host=%s savesets=%d location=%s.0 '
+                        'prev=%s' % (self.backup_host, count, interval, prev))
+        self.session.commit()
+        return {'rotate': results}
+
+    def start(self, hosts, volume):
+        if (len(hosts) == 0):
+            self._exit('action=start must specify at least one --host')
+        for host in hosts:
+            saveset_id = obj.new_saveset(host, volume)
+            try:
+                ret = subprocess.call(['rsnapshot', '-c',
+                                       self.rsnapshot_conf, 'sync', host])
+            except Exception as ex:
+                logger.error('action=start subprocess error=%s' % ex.message)
+                continue
+            if (ret != 0):
+                logger.error('action=start rsnapshot process error=%d' % ret)
+                continue
+            try:
+                obj.inject(host, volume,
+                           '%s/.sync' % obj.snapshot_root, saveset_id)
+            except Exception as ex:
+                logger.error('action=start inject error=%s' % ex.message)
+                continue
+            obj.calc_sums(saveset_id)
+
+    def new_saveset(self, host, volume):
         """Set up new saveset entry in database
         Args:
             host (str):   host from which to copy files
@@ -241,14 +349,14 @@ class RsnapShot(object):
         backup_host_record = self.session.query(models.Host).filter_by(
             hostname=self.backup_host).one()
         if (not host or not vol):
-            raise ValueError('Invalid host or volume')
+            self._exit('Invalid host or volume')
         pathname = '%s/hourly.0' % self.snapshot_root
         saveset = models.Saveset(
             saveset='%(host)s-%(volume)s-%(date)s' % {
                 'host': host,
                 'volume': volume,
                 'date': datetime.datetime.now().strftime('%Y%m%d-%H')},
-            location='.sync',
+            location=SYNC_PATH,
             host=host_record,
             backup_host=backup_host_record
         )
@@ -256,28 +364,92 @@ class RsnapShot(object):
         try:
             self.session.commit()
         except sqlalchemy.exc.IntegrityError as ex:
-            logger.error(ex.message)
-            exit(1)
+            self._exit('DB insert action=start msg=%s' % ex.message)
         logger.info('START saveset=%s' % saveset.saveset)
         return saveset.id
 
-    def list_hosts(self):
+    def verify(self, saveset):
+        """Verify checksums of files attached to a saveset
+
+        Parameters:
+            saveset (str): name of a saveset
+        Returns:
+            result (dict): summary of file count and errors
+        Raises:
+            RuntimeError: if saveset is missing or errors were found
+        """
+
+        try:
+            record = self.session.query(models.Saveset).filter_by(
+                    saveset=saveset).one()
+        except sqlalchemy.orm.exc.NoResultFound:
+            raise RuntimeError('VERIFY saveset=%s not found' % saveset)
+
+        (count, errors, missing) = (0, 0, 0)
+        for record in self.session.query(models.Backup).join(
+                models.Backup.file).filter(
+                    models.Backup.saveset_id == record.id,
+                    models.File.type == 'f',
+                    models.File.size > 0).limit(10):
+            if (record.file.sha256sum is None):
+                missing += 1
+                continue
+            try:
+                with open('%s/%s' % (
+                        record.file.path, record.file.filename), 'r') as f:
+                    sha256 = hashlib.sha256(f.read()).hexdigest()
+            except Exception as ex:
+                logger.warn('sha256(%s): %s' % (
+                    record.file.filename, ex.message))
+            count += 1
+            if (sha256 != record.file.sha256sum):
+                logger.warn('BAD CHECKSUM: action=verify file=%s/%s' % (
+                            record.file.path, record.file.filename))
+                errors += 1
+        msg = 'VERIFY: saveset=%s count=%d errors=%d missing=%d' % (
+            saveset, count, errors, missing)
+        if (errors):
+            logger.error(msg)
+        else:
+            logger.info(msg)
+        if (self.format == 'text'):
+            print msg
+        if (errors):
+            raise RuntimeError('VERIFY saveset=%s errors=%d' % (
+                saveset, errors))
+        return {'verify': [{
+            'saveset': saveset, 'count': count, 'errors': errors,
+            'missing': missing}]}
+
+    def list_hosts(self, filter):
         """List hosts"""
-        items = self.session.query(models.Host).order_by('hostname')
-        for item in items:
-            print item.hostname
+        items = self.session.query(models.Host).filter(
+            models.Host.hostname.like(filter)).order_by('hostname')
+        return {'hosts': [dict(
+                    name=item.hostname,
+                    created=item.created.strftime(self.time_fmt)
+                    ) for item in items]}
 
-    def list_savesets(self):
+    def list_savesets(self, filter):
         """List savesets"""
-        items = self.session.query(models.Saveset).order_by('saveset')
-        for item in items:
-            print item.saveset
+        items = self.session.query(models.Saveset).filter(
+            models.Saveset.saveset.like(filter)).order_by('saveset')
+        return {'savesets': [dict(
+                    name=item.saveset, location=item.location,
+                    created=item.created.strftime(self.time_fmt),
+                    host=item.host.hostname,
+                    backup_host=item.backup_host.hostname,
+                    finished=item.finished.strftime(self.time_fmt) if
+                             item.finished else None) for item in items]}
 
-    def list_volumes(self):
-        """List savesets"""
-        items = self.session.query(models.Volume).order_by('volume')
-        for item in items:
-            print item.volume
+    def list_volumes(self, filter):
+        """List volumes"""
+        items = self.session.query(models.Volume).filter(
+            models.Volume.volume.like(filter)).order_by('volume')
+        return {'volumes': [dict(
+                    name=item.volume, path=item.path, size=item.size,
+                    created=item.created.strftime(self.time_fmt),
+                    host=item.host.hostname) for item in items]}
 
     @staticmethod
     def _filetype(mode):
@@ -305,6 +477,11 @@ class RsnapShot(object):
         else:
             raise RuntimeError('Unexpected file mode %d' % mode)
 
+    @staticmethod
+    def _exit(error_message):
+        logger.error(error_message)
+        exit(1)
+
 
 class Syslog(object):
     def __init__(self):
@@ -324,6 +501,13 @@ class Syslog(object):
             datetime.datetime.now().strftime('%d/%b/%Y-%H:%M:%S'),
             severity, msg)
 
+    def debug(self, msg):
+        if (self.log_level == logging.DEBUG):
+            print >>sys.stderr, "DEBUG: %s" % msg
+            self.logger.debug('%s %s' % (self.prog, msg))
+            with open(self.logfile, 'a') as f:
+                f.write(self._date_prefix('W', msg))
+
     def error(self, msg):
         print >>sys.stderr, "ERROR: %s" % msg
         self.logger.error('%s %s' % (self.prog, msg))
@@ -335,35 +519,98 @@ class Syslog(object):
         with open(self.logfile, 'a') as f:
             f.write(self._date_prefix('I', msg))
 
+    def warn(self, msg):
+        print >>sys.stderr, "WARN: %s" % msg
+        self.logger.warn('%s %s' % (self.prog, msg))
+        with open(self.logfile, 'a') as f:
+            f.write(self._date_prefix('W', msg))
+
+
+class ReadConfig(object):
+    def __init__(self, filename=None):
+        self.multiple_allowed = ['backup', 'backup_script', 'exclude',
+                                 'include', 'include_conf', 'interval']
+
+    def rsnapshot_cfg(self, filename):
+        """Parse the rsnapshot config file into a dictionary
+        Keywords in this config file can have up to two parameters;
+        for those which allow multiple statements of the same keyword,
+        return a 2-level sub-dictionary or a single-level list
+        """
+
+        self.filename = filename
+        contents = {}
+        fp = open(filename, 'r')
+        linenum = 1
+        for line in fp:
+            if '#' in line:
+                line, comment = line.split('#', 1)
+            tokens = line.strip().split()
+            if (len(tokens) == 0):
+                continue
+            elif (len(tokens) < 2 or len(tokens) > 3):
+                raise SyntaxError('file=%s at line %d\n%s' % (
+                    filename, linenum, line))
+            key = tokens[0]
+            if (key in self.multiple_allowed):
+                if (len(tokens) == 2):
+                    if (key not in contents):
+                        contents[key] = []
+                    contents[key].append(tokens[1])
+                else:
+                    if (key not in contents):
+                        contents[key] = {}
+                    contents[key][tokens[1]] = tokens[2]
+            elif (key not in contents):
+                contents[key] = ' '.join(tokens[1:])
+            else:
+                raise SyntaxError('file=%s (%d): duplicate keyword %s' % (
+                    filename, linenum, key))
+            linenum += 1
+        fp.close()
+        return contents
+
 
 def main():
     global logger
     opts = docopt.docopt(__doc__)
     obj = RsnapShot(opts)
     logger = Syslog()
+    obj.rsnapshot_cfg = ReadConfig().rsnapshot_cfg(opts['--rsnapshot-conf'])
+    try:
+        obj.snapshot_root = obj.rsnapshot_cfg['snapshot_root'].rstrip('/')
+    except KeyError:
+        pass
+
+    result = {}
+    opts['--filter'] = opts['--filter'].replace('*', '%')
 
     if (opts['--logfile']):
         logger.logfile = opts['--logfile']
+    if (opts['--verbose']):
+        logger.log_level = logging.DEBUG
 
-    if (opts['--action'] == 'list-hosts'):
-        obj.list_hosts()
-    elif (opts['--action'] == 'list-savesets'):
-        obj.list_savesets()
-    elif (opts['--action'] == 'list-volumes'):
-        obj.list_volumes()
+    if (opts['--list-hosts']):
+        result = obj.list_hosts(filter=opts['--filter'])
+    elif (opts['--list-savesets']):
+        result = obj.list_savesets(filter=opts['--filter'])
+    elif (opts['--list-volumes']):
+        result = obj.list_volumes(filter=opts['--filter'])
+    elif (opts['--verify']):
+        result = obj.verify(opts['--verify'])
     elif (opts['--action'] == 'start'):
         result = obj.start(opts['--host'], opts['--volume'])
-        print result
-    elif (opts['--action'] == 'inject'):
-        result = obj.inject(
-            opts['--host'], opts['--volume'], opts['--pathname'],
-            int(opts['--saveset-id']))
     elif (opts['--action'] == 'rotate'):
         result = obj.rotate(opts['--interval'])
     else:
-        print >>sys.stderr, 'ERROR Unknown action: %s' % opts['--action']
-        exit(1)
+        obj._exit('Unknown action: %s' % opts['--action'])
 
+    if (obj.format == 'json'):
+        print json.dumps(result)
+    elif (obj.format == 'text' and result.keys()[0] in [
+            'hosts', 'savesets', 'volumes']):
+        for item in result[result.keys()[0]]:
+            print item['name']
 
 if __name__ == '__main__':
     main()
