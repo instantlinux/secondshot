@@ -315,7 +315,7 @@ class RsnapShot(object):
         if (len(hosts) == 0):
             self._exit('action=start must specify at least one --host')
         for host in hosts:
-            saveset_id = obj.new_saveset(host, volume)
+            saveset_id = self.new_saveset(host, volume)
             try:
                 ret = subprocess.call(['rsnapshot', '-c',
                                        self.rsnapshot_conf, 'sync', host])
@@ -326,12 +326,12 @@ class RsnapShot(object):
                 logger.error('action=start rsnapshot process error=%d' % ret)
                 continue
             try:
-                obj.inject(host, volume,
-                           '%s/.sync' % obj.snapshot_root, saveset_id)
+                self.inject(host, volume,
+                           '%s/.sync' % self.snapshot_root, saveset_id)
             except Exception as ex:
                 logger.error('action=start inject error=%s' % ex.message)
                 continue
-            obj.calc_sums(saveset_id)
+            self.calc_sums(saveset_id)
 
     def new_saveset(self, host, volume):
         """Set up new saveset entry in database
