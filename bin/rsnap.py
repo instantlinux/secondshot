@@ -190,7 +190,8 @@ class RsnapShot(object):
                     msg = 'action=inject inode=inode=%d dev=%s' % (
                         stat.st_ino, stat.st_dev)
                     try:
-                        msg += ' path=%s filename=%s' % (dirpath, filename)
+                        msg += ' path=%s filename=%s msg=%s' % (
+                            dirpath, filename, ex.message))
                     except Exception:
                         pass
                     skipped += 1
@@ -220,7 +221,7 @@ class RsnapShot(object):
                     owner = None
                     group = None
 
-                for (retry in [1..5]):
+                for retry in range(5):
                     try:
                         # Bypass sqlalchemy for ON DUPLICATE KEY UPDATE and
                         # LAST_INSERT_ID functionality
@@ -244,7 +245,7 @@ class RsnapShot(object):
                         logger.warn('action=inject path=%s filename=%s msg=%s'
                                     % (dirpath, filename, ex.message))
                         if ('Deadlock found' in ex.message):
-                            time.sleep(15)
+                            time.sleep((retry + 1) * 10)
                     except Exception as ex:
                         logger.warn('action=inject path=%s filename=%s msg=%s'
                                     % (dirpath, filename, ex.message))
