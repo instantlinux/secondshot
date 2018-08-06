@@ -20,7 +20,7 @@ BIN=/var/lib/ilinux/rsnap/bin
 
 il_syslog info START
 
-$BIN/rsnap.py --action=start --volume=daily-$(hostname -s) $HOSTS
+$BIN/rsnap.py -v --action=start --volume=daily-$(hostname -s) $HOSTS
 RET=$?
 
 # Rotate the snapshots

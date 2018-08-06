@@ -58,6 +58,7 @@ import sqlalchemy.orm
 import stat
 import subprocess
 import sys
+import time
 
 import models
 
@@ -77,7 +78,7 @@ class RsnapShot(object):
         if (opts['--format'] in ['json', 'text']):
             self.format = opts['--format']
         else:
-            self._exit('format must be json or text')
+            sys.exit('format must be json or text')
         self.rsnapshot_conf = opts['--rsnapshot-conf']
         self.sequence = ['hourly', 'daysago', 'weeksago', 'monthsago',
                          'semiannually', 'yearsago']
@@ -117,7 +118,7 @@ class RsnapShot(object):
         except Exception as ex:
             logger.warn('action=calc_sums msg=%s' % ex.message)
         if (not host or not location):
-            self._exit('action=calc_sums msg=missing host/location')
+            sys.exit('action=calc_sums msg=missing host/location')
         total = self.session.query(sqlalchemy.sql.func.sum(
             models.File.size).label('total')).filter(
             models.Backup.saveset_id == saveset_id).join(
@@ -165,12 +166,12 @@ class RsnapShot(object):
             saveset = self.session.query(models.Saveset).filter_by(
                 id=saveset_id).one()
         except Exception as ex:
-            self._exit('action=inject Invalid host or volume: %s' % ex.message)
+            sys.exit('action=inject Invalid host or volume: %s' % ex.message)
         (count, skipped) = (0, 0)
         for dirpath, dirnames, filenames in os.walk(pathname):
             for filename in filenames:
                 try:
-                    stat = os.stat(os.path.join(dirpath, filename))
+                    stat = os.lstat(os.path.join(dirpath, filename))
                     _path = pymysql.escape_string(dirpath.encode(
                             'unicode_escape'))
                     _filename = pymysql.escape_string(filename.encode(
@@ -219,27 +220,36 @@ class RsnapShot(object):
                     owner = None
                     group = None
 
-                # Bypass sqlalchemy for ON DUPLICATE KEY UPDATE and
-                # LAST_INSERT_ID functionality
-                try:
-                    self.session.execute(
-                        u"INSERT INTO files (%(columns)s) VALUES('%(values)s')"
-                        u" ON DUPLICATE KEY UPDATE owner='%(owner)s',"
-                        u"grp='%(group)s',id=LAST_INSERT_ID(id),"
-                        u"last_backup=NOW();" % dict(
-                            columns=','.join(record.keys()),
-                            values="','".join(str(item) for item
-                                              in record.values()),
-                            owner=owner, group=group))
-                    self.session.execute(
-                        "INSERT INTO backups (saveset_id,volume_id,file_id) "
-                        "VALUES(%(saveset_id)d,%(volume_id)d,"
-                        "LAST_INSERT_ID());" %
-                        dict(saveset_id=saveset.id, volume_id=vol.id))
-                except Exception as ex:
-                    skipped += 1
-                    logger.warn('action=inject path=%s filename=%s message=%s'
-                                % (dirpath, filename, ex.message))
+                for (retry in [1..5]):
+                    try:
+                        # Bypass sqlalchemy for ON DUPLICATE KEY UPDATE and
+                        # LAST_INSERT_ID functionality
+                        self.session.execute(
+                            u"INSERT INTO files (%(columns)s)"
+                            u" VALUES('%(values)s')"
+                            u" ON DUPLICATE KEY UPDATE owner='%(owner)s',"
+                            u"grp='%(group)s',id=LAST_INSERT_ID(id),"
+                            u"last_backup=NOW();" % dict(
+                                columns=','.join(record.keys()),
+                                values="','".join(str(item) for item
+                                                  in record.values()),
+                                owner=owner, group=group))
+                        self.session.execute(
+                            "INSERT INTO backups (saveset_id,volume_id,file_id"
+                            ") VALUES(%(saveset_id)d,%(volume_id)d,"
+                            "LAST_INSERT_ID());" %
+                            dict(saveset_id=saveset.id, volume_id=vol.id))
+                        break
+                    except pymysql.err.OperationalError as ex:
+                        logger.warn('action=inject path=%s filename=%s msg=%s'
+                                    % (dirpath, filename, ex.message))
+                        if ('Deadlock found' in ex.message):
+                            time.sleep(15)
+                    except Exception as ex:
+                        logger.warn('action=inject path=%s filename=%s msg=%s'
+                                    % (dirpath, filename, ex.message))
+                    if (retry == 5):
+                        skipped += 1
                 count += 1
                 if (count % 5000 == 0):
                     logger.debug('action=inject count=%d' % count)
@@ -266,7 +276,7 @@ class RsnapShot(object):
         """
         results = []
         if (interval not in self.rsnapshot_cfg['interval']):
-            self._exit(
+            sys.exit(
                 'action=rotate interval=%s must be in %s' %
                 (interval, ','.join(sorted(self.rsnapshot_cfg[
                     'interval'].keys()))))
@@ -281,7 +291,7 @@ class RsnapShot(object):
             prev = self.sequence[self.sequence.index(interval) - 1]
             prev += ".%d" % int(self.rsnap_cfg['interval'][prev] - 1)
         else:
-            self._exit('unrecognized interval %s' % interval)
+            sys.exit('action=rotate interval=%s unrecognized' % interval)
 
         # delete savesets that match <interval>.<interval_max - 1>
         count = self.session.query(models.Saveset).filter_by(
@@ -330,7 +340,7 @@ class RsnapShot(object):
             dict: operations performed
         """
         if (len(hosts) == 0):
-            self._exit('action=start must specify at least one --host')
+            sys.exit('action=start must specify at least one --host')
         results = []
         status = 'ok'
         for host in hosts:
@@ -348,8 +358,8 @@ class RsnapShot(object):
                 continue
             try:
                 results.append(
-                    self.inject(host, volume, '%s/.sync' % self.snapshot_root,
-                                saveset_id))
+                    self.inject(host, volume, '%s/%s' % (
+                        self.snapshot_root, SYNC_PATH), saveset_id))
             except Exception as ex:
                 logger.error('action=start inject error=%s' % ex.message)
                 status = 'error'
@@ -373,13 +383,13 @@ class RsnapShot(object):
         backup_host_record = self.session.query(models.Host).filter_by(
             hostname=self.backup_host).one()
         if (not host or not vol):
-            self._exit('Invalid host or volume')
-        pathname = '%s/hourly.0' % self.snapshot_root
+            sys.exit('Invalid host or volume')
+        pathname = '%s/%s.0' % (self.snapshot_root, self.sequence[0])
         saveset = models.Saveset(
-            saveset='%(host)s-%(volume)s-%(date)s' % {
-                'host': host,
-                'volume': volume,
-                'date': datetime.datetime.now().strftime('%Y%m%d-%H')},
+            saveset='%(host)s-%(volume)s-%(date)s' % dict(
+                host=host,
+                volume=volume,
+                date=datetime.datetime.now().strftime('%Y%m%d-%H')),
             location=SYNC_PATH,
             host=host_record,
             backup_host=backup_host_record
@@ -388,7 +398,7 @@ class RsnapShot(object):
         try:
             self.session.commit()
         except sqlalchemy.exc.IntegrityError as ex:
-            self._exit('DB insert action=start msg=%s' % ex.message)
+            sys.exit('DB insert action=start msg=%s' % ex.message)
         logger.info('START saveset=%s' % saveset.saveset)
         return saveset.id
 
@@ -500,11 +510,6 @@ class RsnapShot(object):
             return 's'
         else:
             raise RuntimeError('Unexpected file mode %d' % mode)
-
-    @staticmethod
-    def _exit(error_message):
-        logger.error(error_message)
-        exit(1)
 
 
 class Syslog(object):
@@ -624,7 +629,7 @@ def main():
     elif (opts['--action'] == 'rotate'):
         result = obj.rotate(opts['--interval'])
     else:
-        obj._exit('Unknown action: %s' % opts['--action'])
+        sys.exit('Unknown action: %s' % opts['--action'])
 
     if (obj.format == 'json'):
         print json.dumps(result)
