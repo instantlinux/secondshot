@@ -1,5 +1,5 @@
 # coding: utf-8
-from sqlalchemy import BIGINT, CHAR, Column, Enum, Float, ForeignKey, \
+from sqlalchemy import BIGINT, BINARY, CHAR, Column, Enum, Float, ForeignKey, \
      INTEGER, Index, String, TIMESTAMP, text
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.dialects.mysql.types import TINYINT
@@ -42,6 +42,7 @@ class File(Base):
     links = Column(INTEGER, nullable=False, server_default=text("1"))
     sparseness = Column(Float, nullable=False, server_default=text("1"))
     sha256sum = Column(CHAR(64))
+    shasum = Column(BINARY(64))
     first_backup = Column(TIMESTAMP, nullable=False,
                           server_default=text("current_timestamp()"))
     last_backup = Column(TIMESTAMP)
