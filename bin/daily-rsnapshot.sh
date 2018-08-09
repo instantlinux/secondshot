@@ -15,7 +15,7 @@ WEEKDAY=`date +%w`
 DAY=`date +%d`
 MONTH=`date +%m`
 
-rsnap.py -v --action=start --volume=daily-$(hostname -s) --autoverify=no $HOSTS
+rsnap.py -v --action=start --volume=daily-$(hostname -s) --autoverify=no --hashtype=sha512 $HOSTS
 rsnap.py --action=rotate --interval=hourly
 if [ $HOUR -le 02 ]; then
   rsnap.py --action=rotate --interval=daysago

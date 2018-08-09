@@ -10,7 +10,7 @@ Usage:
            [--dbname=DB] [--dbport=PORT]
            [--backup-host=HOST] [--host=HOST]... [--logfile=FILE]
            [--list-hosts] [--list-savesets] [--list-volumes]
-           [--filter=STR] [--format=FORMAT]
+           [--filter=STR] [--format=FORMAT] [--hashtype=ALGORITHM]
            [--rsnapshot-conf=FILE] [--autoverify=BOOL] [--volume=VOL] [-v]...
   rsnap.py --action=start --host=HOST --volume=VOL [--autoverify=BOOL] [-v]...
   rsnap.py --action=rotate --interval=INTERVAL [-v]...
@@ -37,6 +37,7 @@ Options:
   --rsnapshot-conf=FILE Path of rsnapshot's config file
                         [default: /var/lib/ilinux/rsnap/etc/backup-daily.conf]
   --autoverify=BOOL     Verify each just-created saveset [default: yes]
+  --hashtype=ALGORITHM  Hash algorithm md5, sha256, sha512 [default: md5]
   --verify=SAVESET      Verify checksums of stored files
   --volume=VOLUME       Volume to back up
   -v --verbose          Verbose output
@@ -85,6 +86,10 @@ class RsnapShot(object):
             self.format = opts['--format']
         else:
             sys.exit('format must be json or text')
+        if (opts['--hashtype'] in ['md5', 'sha256', 'sha512']):
+            self.hashtype = opts['--hashtype']
+        else:
+            sys.exit('hashtype must be md5, sha256 or sha512')
         self.rsnapshot_conf = opts['--rsnapshot-conf']
         self.sequence = DEFAULT_SEQUENCE
         self.snapshot_root = SNAPSHOT_ROOT
@@ -137,10 +142,9 @@ class RsnapShot(object):
         for record in missing_sha:
             count += 1
             try:
-                with open('%s/%s' % (
-                        record.file.path, record.file.filename), 'r') as f:
-                    sha = hashlib.sha512(f.read()).digest()
-                record.file.shasum = sha
+                record.file.shasum = self._filehash(
+                    '%s/%s' % (record.file.path, record.file.filename),
+                    self.hashtype)
                 self.session.add(record.file)
                 bytes += record.file.size
             except Exception as ex:
@@ -481,9 +485,9 @@ class RsnapShot(object):
                         models.File.size > 0):
                 count += 1
                 try:
-                    with open('%s/%s' % (
-                            file.file.path, file.file.filename), 'r') as f:
-                        sha = hashlib.sha512(f.read()).digest()
+                    sha = self._filehash(
+                        '%s/%s' % (file.file.path, file.file.filename),
+                        self.hashtype)
                     if (sha != file.file.shasum):
                         logger.warn('BAD CHECKSUM: action=verify file=%s/%s'
                                     % (file.file.path, file.file.filename))
@@ -541,6 +545,26 @@ class RsnapShot(object):
                     name=item.volume, path=item.path, size=item.size,
                     created=item.created.strftime(self.time_fmt),
                     host=item.host.hostname) for item in items]}
+
+    @staticmethod
+    def _filehash(file, hashtype):
+        """Read a file and return its hash
+
+        Args:
+            file (str): name of file
+            hashtype (str): type of hash
+        Returns:
+            str:  binary digest (as 16, 32 or 64 bytes)
+        Raises:
+            OS exceptions
+        """
+        with open('%s/%s' % (file), 'r') as f:
+            if (hashtype == 'md5'):
+                return hashlib.md5(f.read()).digest()
+            elif (hashtype == 'sha256'):
+                return hashlib.sha256(f.read()).digest()
+            elif (hashtype == 'sha512'):
+                return hashlib.sha512(f.read()).digest()
 
     @staticmethod
     def _filetype(mode):
