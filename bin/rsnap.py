@@ -14,7 +14,7 @@ Usage:
            [--rsnapshot-conf=FILE] [--autoverify=BOOL] [--volume=VOL] [-v]...
   rsnap.py --action=start --host=HOST --volume=VOL [--autoverify=BOOL] [-v]...
   rsnap.py --action=rotate --interval=INTERVAL [-v]...
-  rsnap.py --verify=SAVESET... [--format=FORMAT] [-v]...
+  rsnap.py --verify=SAVESET... [--format=FORMAT] [--hashtype=ALGORITHM] [-v]...
   rsnap.py (-h | --help)
 
 Options:
@@ -235,7 +235,7 @@ class RsnapShot(object):
                     owner = None
                     group = None
 
-                for retry in range(5):
+                for retry in range(4):
                     try:
                         # Bypass sqlalchemy for ON DUPLICATE KEY UPDATE and
                         # LAST_INSERT_ID functionality
@@ -255,15 +255,19 @@ class RsnapShot(object):
                             "LAST_INSERT_ID());" %
                             dict(saveset_id=saveset.id, volume_id=vol.id))
                         break
-                    except pymysql.err.OperationalError as ex:
+                    except sqlalchemy.exc.OperationalError as ex:
                         logger.warn('action=inject path=%s filename=%s msg=%s'
                                     % (_path, _filename, ex.message))
                         if ('Deadlock found' in ex.message):
                             time.sleep((retry + 1) * 10)
+                        else:
+                            time.sleep(1)
                     except Exception as ex:
                         logger.warn('action=inject path=%s filename=%s msg=%s'
                                     % (_path, _filename, ex.message))
-                    if (retry == 5):
+                        time.sleep(1)
+                        raise
+                    if (retry == 4):
                         skipped += 1
                 count += 1
                 if (count % 5000 == 0):
@@ -291,14 +295,13 @@ class RsnapShot(object):
         """
 
         results = []
-        if (interval not in self.rsnapshot_cfg['interval']):
+        if (interval not in self.intervals):
             sys.exit(
                 'action=rotate interval=%s must be in %s' %
-                (interval, ','.join(sorted(self.rsnapshot_cfg[
-                    'interval'].keys()))))
+                (interval, ','.join(sorted(self.intervals.keys()))))
         host_record = self.session.query(models.Host).filter_by(
             hostname=self.backup_host).one()
-        interval_max = int(self.rsnapshot_cfg['interval'][interval])
+        interval_max = int(self.intervals[interval])
 
         try:
             ret = subprocess.call(['rsnapshot', '-c',
@@ -317,7 +320,7 @@ class RsnapShot(object):
             prev = SYNC_PATH
         elif (interval in self.sequence):
             prev = self.sequence[self.sequence.index(interval) - 1]
-            prev += ".%d" % (int(self.rsnapshot_cfg['interval'][prev]) - 1)
+            prev += ".%d" % (int(self.intervals[prev]) - 1)
         else:
             sys.exit('action=rotate interval=%s unrecognized' % interval)
 
@@ -440,8 +443,12 @@ class RsnapShot(object):
             host=host_record,
             backup_host=backup_host_record
         )
-        self.session.add(saveset)
-        self.session.commit()
+        try:
+            self.session.add(saveset)
+            self.session.commit()
+        except sqlalchemy.exc.IntegrityError as ex:
+            if ('Duplicate entry' in ex.message):
+                sys.exit('ERROR: duplicate saveset=%s' % saveset.saveset)
         logger.info('START saveset=%s' % saveset.saveset)
         return dict(id=saveset.id, saveset=saveset.saveset)
 
@@ -471,26 +478,32 @@ class RsnapShot(object):
                 raise RuntimeError('VERIFY saveset=%s not found' % saveset)
 
             count = missing = self.session.query(models.Backup).join(
-                    models.Backup.file).filter(
+                    models.File).filter(
                         models.Backup.saveset_id == record.id,
                         models.File.type == 'f',
                         models.File.shasum == None,  # noqa: E711
                         models.File.size > 0).count()
             (errors, skipped) = (0, 0)
             for file in self.session.query(models.Backup).join(
-                    models.Backup.file).filter(
+                    models.File).filter(
                         models.Backup.saveset_id == record.id,
                         models.File.type == 'f',
                         models.File.shasum,
                         models.File.size > 0):
                 count += 1
+                if (self.hashtype != self._hashtype(file.file.shasum)):
+                    self.hashtype = self._hashtype(file.file.shasum)
+                    logger.info('action=verify hashtype=%s' % self.hashtype)
                 try:
                     sha = self._filehash(
                         '%s/%s' % (file.file.path, file.file.filename),
                         self.hashtype)
                     if (sha != file.file.shasum):
-                        logger.warn('BAD CHECKSUM: action=verify file=%s/%s'
-                                    % (file.file.path, file.file.filename))
+                        logger.warn('BAD CHECKSUM: action=verify file=%s/%s '
+                                    'expected=%s actual=%s' %
+                                    (file.file.path, file.file.filename,
+                                     binascii.hexlify(file.file.shasum),
+                                     binascii.hexlify(sha)))
                         errors += 1
                 except Exception as ex:
                     logger.debug('sha(%s): %s' % (
@@ -502,8 +515,6 @@ class RsnapShot(object):
 
             msg = ('VERIFY: saveset=%s count=%d errors=%d missing=%d '
                    'skipped=%d' % (saveset, count, errors, missing, skipped))
-            if (self.format == 'text'):
-                print msg
             if (errors):
                 logger.error(msg)
             else:
@@ -558,13 +569,34 @@ class RsnapShot(object):
         Raises:
             OS exceptions
         """
-        with open('%s/%s' % (file), 'r') as f:
+        with open(file, 'r') as f:
             if (hashtype == 'md5'):
                 return hashlib.md5(f.read()).digest()
             elif (hashtype == 'sha256'):
                 return hashlib.sha256(f.read()).digest()
             elif (hashtype == 'sha512'):
                 return hashlib.sha512(f.read()).digest()
+
+    @staticmethod
+    def _hashtype(shasum):
+        """Identify hashtype of a shasum value
+
+        Args:
+            shasum (str): binary string
+        Returns:
+            str:  hash type md5, sha256 or sha512
+        Raises:
+            RuntimeError on failure
+        """
+        if (len(shasum) == 16):
+            return 'md5'
+        elif (len(shasum) == 32):
+            return 'sha256'
+        elif (len(shasum) == 64):
+            return 'sha512'
+        else:
+            raise RuntimeError('Hash type of %s unrecognized' %
+                               binascii.hexlify(shasum))
 
     @staticmethod
     def _filetype(mode):
@@ -643,7 +675,8 @@ class Syslog(object):
 class ReadConfig(object):
     def __init__(self, filename=None):
         self.multiple_allowed = ['backup', 'backup_script', 'exclude',
-                                 'include', 'include_conf', 'interval']
+                                 'include', 'include_conf', 'interval',
+                                 'retain']
 
     def rsnapshot_cfg(self, filename):
         """Parse the rsnapshot config file into a dictionary
@@ -700,6 +733,10 @@ def main():
     obj.rsnapshot_cfg = ReadConfig().rsnapshot_cfg(opts['--rsnapshot-conf'])
     if ('snapshot_root' in obj.rsnapshot_cfg):
         obj.snapshot_root = obj.rsnapshot_cfg['snapshot_root'].rstrip('/')
+    if ('retain' in obj.rsnapshot_cfg):
+        obj.intervals = obj.rsnapshot_cfg['retain']
+    else:
+        obj.intervals = obj.rsnapshot_cfg['interval']
     filter = opts['--filter'].replace('*', '%')
     result = {}
     status = 'ok'
