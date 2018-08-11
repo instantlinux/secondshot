@@ -139,17 +139,18 @@ class RsnapShot(object):
                     "host=%s for location=%s" %
                     (saveset, float(total) / 1e9, host, location))
         (bytes, count) = (0, 0)
-        for record in missing_sha:
+        for file in missing_sha:
             count += 1
             try:
-                record.file.shasum = self._filehash(
-                    '%s/%s' % (record.file.path, record.file.filename),
-                    self.hashtype)
-                self.session.add(record.file)
-                bytes += record.file.size
+                filename = os.path.join(
+                    self.snapshot_root, location, file.file.path,
+                    file.file.filename)
+                file.file.shasum = self._filehash(filename, self.hashtype)
+                self.session.add(file.file)
+                bytes += file.file.size
             except Exception as ex:
                 logger.warn("action=calc_sums id=%d msg=skipped error=%s" %
-                            (record.file.id, ex.message))
+                            (file.file.id, ex.message))
             if (count % 1000 == 0):
                 logger.debug('action=calc_sums count=%d bytes=%d' %
                              (count, bytes))
@@ -182,12 +183,13 @@ class RsnapShot(object):
         except Exception as ex:
             sys.exit('action=inject Invalid host or volume: %s' % ex.message)
         (count, skipped) = (0, 0)
-        for dirpath, dirnames, filenames in os.walk(pathname):
+        for dirpath, _, filenames in os.walk(pathname):
             for filename in filenames:
                 try:
                     stat = os.lstat(os.path.join(dirpath, filename))
-                    _path = pymysql.escape_string(dirpath.encode(
-                            'unicode_escape'))
+                    _path = pymysql.escape_string(os.path.relpath(
+                        dirpath, self.snapshot_root + '/' + SYNC_PATH
+                        ).encode('unicode_escape'))
                     _filename = pymysql.escape_string(filename.encode(
                             'unicode_escape'))
                 except OSError as ex:
@@ -483,21 +485,23 @@ class RsnapShot(object):
                         models.File.type == 'f',
                         models.File.shasum == None,  # noqa: E711
                         models.File.size > 0).count()
+            print "saveset %d/%d" % (record.id, count)
             (errors, skipped) = (0, 0)
             for file in self.session.query(models.Backup).join(
                     models.File).filter(
                         models.Backup.saveset_id == record.id,
                         models.File.type == 'f',
-                        models.File.shasum,
+                        models.File.shasum != None,  # noqa: E711
                         models.File.size > 0):
                 count += 1
                 if (self.hashtype != self._hashtype(file.file.shasum)):
                     self.hashtype = self._hashtype(file.file.shasum)
                     logger.info('action=verify hashtype=%s' % self.hashtype)
                 try:
-                    sha = self._filehash(
-                        '%s/%s' % (file.file.path, file.file.filename),
-                        self.hashtype)
+                    filename = os.path.join(
+                        self.snapshot_root, record.location, file.file.path,
+                        file.file.filename)
+                    sha = self._filehash(filename, self.hashtype)
                     if (sha != file.file.shasum):
                         logger.warn('BAD CHECKSUM: action=verify file=%s/%s '
                                     'expected=%s actual=%s' %
