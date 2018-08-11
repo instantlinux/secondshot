@@ -3,7 +3,7 @@
 #  Run this 3 times daily, 1:30 9:30 and 17:30
 
 . /etc/default/source.sh
-export BKP_PASSWD
+export DBPASS=$BKP_PASSWD
 PATH=/var/lib/ilinux/rsnap/bin:$PATH
 HOSTS="--host=cumbre --host=mckinley"
 if [ $(hostname -s) == "cumbre" ]; then
