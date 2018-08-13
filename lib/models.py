@@ -52,8 +52,8 @@ class File(Base):
     shasum = Column(VARBINARY(64))
     first_backup = Column(TIMESTAMP, nullable=False, server_default=func.now())
     last_backup = Column(TIMESTAMP)
-    #host_id = Column(ForeignKey(u'hosts.id'), primary_key=True, nullable=False,
-    #                 index=True)
+    # host_id = Column(ForeignKey(u'hosts.id'), primary_key=True,
+    #                 nullable=False, index=True)
     host_id = Column(ForeignKey(u'hosts.id'), nullable=False, index=True)
 
     host = relationship('Host')
@@ -68,10 +68,10 @@ class Saveset(Base):
     location = Column(String(32))
     created = Column(TIMESTAMP, nullable=False, server_default=func.now())
     finished = Column(TIMESTAMP, index=True)
-    #host_id = Column(ForeignKey(u'hosts.id'), primary_key=True, nullable=False,
-    #                 index=True)
-    #backup_host_id = Column(ForeignKey(u'hosts.id'), primary_key=True,
-    #                        nullable=False, index=True)
+    # host_id = Column(ForeignKey(u'hosts.id'), primary_key=True,
+    #                  nullable=False, index=True)
+    # backup_host_id = Column(ForeignKey(u'hosts.id'), primary_key=True,
+    #                         nullable=False, index=True)
     host_id = Column(ForeignKey(u'hosts.id'), nullable=False, index=True)
     backup_host_id = Column(ForeignKey(u'hosts.id'), nullable=False,
                             index=True)
@@ -93,8 +93,8 @@ class Volume(Base):
     created = Column(TIMESTAMP, nullable=False, server_default=func.now())
     removable = Column(BOOLEAN, nullable=False, server_default=text("0"))
     mounted = Column(BOOLEAN, nullable=False, server_default=text("1"))
-    #host_id = Column(ForeignKey(u'hosts.id'), primary_key=True, nullable=False,
-    #                 index=True, server_default=text("0"))
+    # host_id = Column(ForeignKey(u'hosts.id'), primary_key=True,
+    #                  nullable=False, index=True, server_default=text("0"))
     host_id = Column(ForeignKey(u'hosts.id'), nullable=False,
                      index=True, server_default=text("0"))
 
@@ -106,12 +106,12 @@ class Backup(Base):
 
     id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
                 autoincrement=True)
-    #saveset_id = Column(ForeignKey(u'savesets.id', ondelete='CASCADE'),
-    #                    primary_key=True, nullable=False, index=True)
-    #volume_id = Column(ForeignKey(u'volumes.id'), primary_key=True,
-    #                   nullable=False, index=True)
-    #file_id = Column(ForeignKey(u'files.id'), primary_key=True, nullable=False,
-    #                 index=True)
+    # saveset_id = Column(ForeignKey(u'savesets.id', ondelete='CASCADE'),
+    #                     primary_key=True, nullable=False, index=True)
+    # volume_id = Column(ForeignKey(u'volumes.id'), primary_key=True,
+    #                    nullable=False, index=True)
+    # file_id = Column(ForeignKey(u'files.id'), primary_key=True,
+    #                  nullable=False, index=True)
     saveset_id = Column(ForeignKey(u'savesets.id', ondelete='CASCADE'),
                         nullable=False, index=True)
     volume_id = Column(ForeignKey(u'volumes.id'),
