@@ -12,9 +12,10 @@ Usage:
            [--list-hosts] [--list-savesets] [--list-volumes]
            [--filter=STR] [--format=FORMAT] [--hashtype=ALGORITHM]
            [--rsnapshot-conf=FILE] [--autoverify=BOOL] [--volume=VOL] [-v]...
-  secondshot --action=start --host=HOST --volume=VOL [--autoverify=BOOL] [-v]...
+  secondshot --action=start --host=HOST --volume=VOL [--autoverify=BOOL]
+           [-v]...
   secondshot --action=rotate --interval=INTERVAL [-v]...
-  secondshot --verify=SAVESET... [--format=FORMAT] [--hashtype=ALGORITHM] [-v]...
+  secondshot --verify=SAVESET... [--format=FORMAT] [--hashtype=ALG] [-v]...
   secondshot (-h | --help)
 
 Options:
@@ -43,7 +44,7 @@ Options:
   -v --verbose          Verbose output
   -h --help             List options
 
-license: gplv2
+license: lgpl-2.1
 """
 
 import binascii
@@ -52,8 +53,6 @@ import docopt
 import grp
 import hashlib
 import json
-import logging
-import logging.handlers
 import os
 import os.path
 import pymysql
@@ -66,7 +65,9 @@ import subprocess
 import sys
 import time
 
+import config
 import models
+import syslogger
 
 DEFAULT_SEQUENCE = ['hourly', 'daysago', 'weeksago', 'monthsago',
                     'semiannually', 'yearsago']
@@ -74,7 +75,7 @@ SNAPSHOT_ROOT = '/var/backup'
 SYNC_PATH = '.sync'
 
 
-class SecondshotShot(object):
+class Secondshot(object):
     global logger
 
     def __init__(self, opts):
@@ -310,8 +311,8 @@ class SecondshotShot(object):
             ret = subprocess.call(['rsnapshot', '-c',
                                    self.rsnapshot_conf, interval])
         except Exception as ex:
-            logger.error(msg)
             msg = 'action=rotate subprocess error=%s' % ex.message
+            logger.error(msg)
             sys.exit(msg)
         if (ret != 0):
             msg = 'action=rotate subprocess returned=%d' % ret
@@ -436,7 +437,6 @@ class SecondshotShot(object):
             hostname=self.backup_host).one()
         if (not host or not vol):
             sys.exit('Invalid host or volume')
-        pathname = '%s/%s.0' % (self.snapshot_root, self.sequence[0])
         saveset = models.Saveset(
             saveset='%(host)s-%(volume)s-%(date)s' % dict(
                 host=host,
@@ -631,113 +631,13 @@ class SecondshotShot(object):
             raise RuntimeError('Unexpected file mode %d' % mode)
 
 
-class Syslog(object):
-    def __init__(self, opts):
-        self.prog = os.path.basename(__file__).split('.')[0]
-        self.logger = logging.getLogger()
-        self.log_facility = 'local1'
-        if (opts['--verbose']):
-            self.log_level = logging.DEBUG
-        else:
-            self.log_level = logging.INFO
-        self.logger.setLevel(self.log_level)
-        handler = logging.handlers.SysLogHandler(
-            address='/dev/log', facility=self.log_facility)
-        self.logger.addHandler(handler)
-        self.logfile = opts['--logfile']
-
-    def debug(self, msg):
-        if (self.log_level == logging.DEBUG):
-            print >>sys.stderr, "DEBUG: %s" % msg
-            self.logger.debug('%s %s' % (self.prog, msg))
-            with open(self.logfile, 'a') as f:
-                f.write(self._date_prefix('D', msg))
-
-    def error(self, msg):
-        print >>sys.stderr, "ERROR: %s" % msg
-        self.logger.error('%s %s' % (self.prog, msg))
-        with open(self.logfile, 'a') as f:
-            f.write(self._date_prefix('E', msg))
-
-    def info(self, msg):
-        if (self.log_level == logging.DEBUG):
-            print >>sys.stderr, "INFO: %s" % msg
-        self.logger.info('%s %s' % (self.prog, msg))
-        with open(self.logfile, 'a') as f:
-            f.write(self._date_prefix('I', msg))
-
-    def warn(self, msg):
-        print >>sys.stderr, "WARN: %s" % msg
-        self.logger.warn('%s %s' % (self.prog, msg))
-        with open(self.logfile, 'a') as f:
-            f.write(self._date_prefix('W', msg))
-
-    @staticmethod
-    def _date_prefix(severity, msg):
-        return '[%s] %s %s\n' % (
-            datetime.datetime.now().strftime('%d/%b/%Y-%H:%M:%S'),
-            severity, msg)
-
-
-class ReadConfig(object):
-    def __init__(self, filename=None):
-        self.multiple_allowed = ['backup', 'backup_script', 'exclude',
-                                 'include', 'include_conf', 'interval',
-                                 'retain']
-
-    def rsnapshot_cfg(self, filename):
-        """Parse the rsnapshot config file into a dictionary
-        Keywords in this config file can have up to two parameters;
-        for those which allow multiple statements of the same keyword,
-        return a 2-level sub-dictionary or a single-level list
-
-        Args:
-            filename (str): name of config file
-        Returns:
-            dict:  parsed contents
-        Raises:
-            SyntaxError: if unexpected syntax
-        """
-
-        self.filename = filename
-        contents = {}
-        fp = open(filename, 'r')
-        linenum = 1
-        for line in fp:
-            if '#' in line:
-                line, comment = line.split('#', 1)
-            tokens = line.strip().split()
-            if (len(tokens) == 0):
-                continue
-            elif (len(tokens) < 2 or len(tokens) > 3):
-                raise SyntaxError('file=%s at line %d\n%s' % (
-                    filename, linenum, line))
-            key = tokens[0]
-            if (key in self.multiple_allowed):
-                if (len(tokens) == 2):
-                    if (key not in contents):
-                        contents[key] = []
-                    contents[key].append(tokens[1])
-                else:
-                    if (key not in contents):
-                        contents[key] = {}
-                    contents[key][tokens[1]] = tokens[2]
-            elif (key not in contents):
-                contents[key] = ' '.join(tokens[1:])
-            else:
-                raise SyntaxError('file=%s (%d): duplicate keyword %s' % (
-                    filename, linenum, key))
-            linenum += 1
-        fp.close()
-        return contents
-
-
 def main():
     global logger
     opts = docopt.docopt(__doc__)
-    obj = SecondshotShot(opts)
-    logger = Syslog(opts)
-    obj.rsnapshot_cfg = ReadConfig().rsnapshot_cfg(opts['--rsnapshot-conf'])
+    obj = Secondshot(opts)
+    logger = syslogger.Syslog(opts)
+    obj.rsnapshot_cfg = config.ReadConfig().rsnapshot_cfg(
+        opts['--rsnapshot-conf'])
     if ('snapshot_root' in obj.rsnapshot_cfg):
         obj.snapshot_root = obj.rsnapshot_cfg['snapshot_root'].rstrip('/')
     if ('retain' in obj.rsnapshot_cfg):

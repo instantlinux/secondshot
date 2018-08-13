@@ -1,7 +1,8 @@
+import os.path
 import setuptools
 from setuptools.command.test import test as TestCommand
 
-__version__ = '0.9'
+__version__ = open(os.path.join(os.getcwd(), 'VERSION')).read()
 
 
 class PyTest(TestCommand):
@@ -31,8 +32,15 @@ setuptools.setup(
     description='Linux-based backup utility',
     author='Rich Braun',
     author_email='richb@instantlinux.net',
-    packages=setuptools.find_packages(exclude=['tests', 'src']),
+    url='https://github.com/instantlinux/secondshot',
+    console_scripts=['secondshot=lib.secondshot.main'],
+    packages=setuptools.find_packages(exclude=['tests']),
     include_package_data=True,
+    install_requires=[
+        'alembic',
+        'docopt',
+        'sqlalchemy'],
+    python_requires='>=2.7.3',
     test_suite='tests.unittests',
     cmdclass={'test': PyTest}
 )

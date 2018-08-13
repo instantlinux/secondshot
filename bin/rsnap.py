@@ -1,1 +1,1 @@
-../src/secondshot.py
+../lib/secondshot.py

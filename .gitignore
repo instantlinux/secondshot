@@ -1,0 +1,12 @@
+*~
+*.pyc
+*.egg-info
+.cache
+.coverage
+build/
+coverage.xml
+dist/
+htmlcov
+python_env
+results.xml
+__pycache__
