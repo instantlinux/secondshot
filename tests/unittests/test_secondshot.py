@@ -1,5 +1,7 @@
 import binascii
 import unittest2
+import sys
+sys.path.append('../../secondshot')
 
 import secondshot
 

@@ -1,1 +1,0 @@
-../lib/secondshot.py

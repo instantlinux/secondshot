@@ -7,7 +7,7 @@ created 28-jul-2018 by richb@instantlinux.net
 
 Usage:
   secondshot [--action=ACTION] [--dbhost=HOST] [--dbuser=USER] [--dbpass=PASS]
-           [--dbname=DB] [--dbport=PORT]
+           [--dbname=DB] [--dbport=PORT] [--dbtype=TYPE]
            [--backup-host=HOST] [--host=HOST]... [--logfile=FILE]
            [--list-hosts] [--list-savesets] [--list-volumes]
            [--filter=STR] [--format=FORMAT] [--hashtype=ALGORITHM]
@@ -26,6 +26,7 @@ Options:
   --dbport=PORT         DB port [default: 18306]
   --dbuser=USER         DB user [default: bkp]
   --dbpass=PASS         DB password (default env variable DBPASS)
+  --dbtype=TYPE         DB type, e.g. sqlite [default: mysql+pymysql]
   --host=HOST           Source host(s) to back up
   --interval=INTERVAL   Rotation interval: hourly, daysago, weeksago,
                         semiannually, yearsago or main
@@ -36,7 +37,7 @@ Options:
   --format=FORMAT       Format (text or json) [default: text]
   --logfile=FILE        Logging destination [default: /var/log/secondshot]
   --rsnapshot-conf=FILE Path of rsnapshot's config file
-                        [default: /var/lib/ilinux/rsnap/etc/backup-daily.conf]
+                        [default: /etc/backup-daily.conf]
   --autoverify=BOOL     Verify each just-created saveset [default: yes]
   --hashtype=ALGORITHM  Hash algorithm md5, sha256, sha512 [default: md5]
   --verify=SAVESET      Verify checksums of stored files
@@ -65,10 +66,12 @@ import subprocess
 import sys
 import time
 
-import config
-import models
-import syslogger
+from . import config
+from . import models
+from . import syslogger
 
+DBPASS_FILE = '/run/secrets/secondshot-db-password'
+DBFILE_PATH = '/metadata'
 DEFAULT_SEQUENCE = ['hourly', 'daysago', 'weeksago', 'monthsago',
                     'semiannually', 'yearsago']
 SNAPSHOT_ROOT = '/var/backup'
@@ -79,10 +82,6 @@ class Secondshot(object):
     global logger
 
     def __init__(self, opts):
-        if ('--db-pass' in opts):
-            pw = opts['--dbpass']
-        else:
-            pw = os.environ['DBPASS']
         self.backup_host = socket.gethostname().split('.')[0]
         if (opts['--format'] in ['json', 'text']):
             self.format = opts['--format']
@@ -96,15 +95,38 @@ class Secondshot(object):
         self.sequence = DEFAULT_SEQUENCE
         self.snapshot_root = SNAPSHOT_ROOT
         self.time_fmt = '%Y-%m-%d %H:%M:%S'
-        self.engine = create_engine(
-            'mysql+pymysql://%(user)s:%(password)s@%(endpoint)s/%(database)s'
-            % {
-                'user': opts['--dbuser'],
-                'password': pw,
-                'endpoint': '%s:%d' % (opts['--dbhost'],
-                                       int(opts['--dbport'])),
-                'database': opts['--dbname']
-            })
+        if (opts['--dbtype'] == 'sqlite'):
+            db_url = ('sqlite:////%(path)s/%(database)' % {
+                          'path': DBFILE_PATH,
+                          'database': opts['--dbname']
+                      })
+        else:
+            pw = ''
+            db_url = None
+            if ('--db-url' in opts):
+                db_url = opts['--db-url']
+            elif ('DB_URL' in os.environ):
+                db_url = os.environ['db_url']
+            elif ('--db-pass' in opts):
+                pw = opts['--dbpass']
+            elif ('DBPASS' in os.environ):
+                pw = os.environ['DBPASS']
+            elif(os.path.isfile(DBPASS_FILE)):
+                pw = open(DBPASS_FILE, 'r').read()
+            else:
+                logger.warn('Database password is not set')
+
+            if (not db_url):
+                db_url = ('%(dbtype)s://%(user)s:%(password)s@'
+                          '%(endpoint)s/%(database)s' % {
+                              'dbtype': opts['--dbtype'],
+                              'user': opts['--dbuser'],
+                              'password': pw,
+                              'endpoint': '%s:%d' % (opts['--dbhost'],
+                                                     int(opts['--dbport'])),
+                              'database': opts['--dbname']
+                          })
+        self.engine = create_engine(db_url)
         self.session = sqlalchemy.orm.scoped_session(
             sqlalchemy.orm.sessionmaker(autocommit=False, bind=self.engine))
 
@@ -634,8 +656,8 @@ class Secondshot(object):
 def main():
     global logger
     opts = docopt.docopt(__doc__)
-    obj = Secondshot(opts)
     logger = syslogger.Syslog(opts)
+    obj = Secondshot(opts)
     obj.rsnapshot_cfg = config.ReadConfig().rsnapshot_cfg(
         opts['--rsnapshot-conf'])
     if ('snapshot_root' in obj.rsnapshot_cfg):
@@ -672,11 +694,11 @@ def main():
         sys.exit('Unknown action: %s' % opts['--action'])
 
     if (obj.format == 'json'):
-        print json.dumps(result)
-    elif (obj.format == 'text' and result and result.keys()[0] in [
+        sys.stdout.write(json.dumps(result) + '\n')
+    elif (obj.format == 'text' and result and next(iter(result.keys())) in [
             'hosts', 'savesets', 'volumes']):
-        for item in result[result.keys()[0]]:
-            print item['name']
+        for item in result[next(iter(result.keys()))]:
+            sys.stdout.write(item['name'] + '\n')
     if (status != 'ok'):
         exit(1)
 

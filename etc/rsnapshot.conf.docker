@@ -1,0 +1,10 @@
+
+#######################
+# ALPINE ADDITIONS    #
+#######################
+
+cmd_cp			/bin/cp
+cmd_ssh			/usr/bin/ssh
+link_dest		1
+sync_first		1
+use_lazy_deletes	1

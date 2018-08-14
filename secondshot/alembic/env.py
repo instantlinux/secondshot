@@ -1,15 +1,16 @@
 from __future__ import with_statement
 from alembic import context
+import os
 from sqlalchemy import engine_from_config, pool
 from logging.config import fileConfig
 
-import sys
-sys.path.append('../')
-from secondshot.lib import models
+from secondshot import models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+config.set_main_option('sqlalchemy.url', os.environ.get(
+    'DB_URL', 'sqlite:////metadata/secondshot.db'))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -67,6 +68,7 @@ def run_migrations_online():
 
         with context.begin_transaction():
             context.run_migrations()
+
 
 if context.is_offline_mode():
     run_migrations_offline()

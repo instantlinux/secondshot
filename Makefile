@@ -1,5 +1,6 @@
 PYPI_URL ?= https://nexus.instantlinux.net/repository/pypi/
 PYPI_USER ?= svc_docker
+RRSYNC_URL = https://www.samba.org/ftp/unpacked/rsync/support/rrsync
 SSL_CHAIN ?= /usr/local/share/ca-certificates/instantlinux-ca.crt
 VERSION ?= $(shell cat VERSION)
 
@@ -8,7 +9,7 @@ VDIR=$(PWD)/$(VENV)
 
 analysis: flake8
 test: pytest
-package: dist/secondshot-$(VERSION).tar.gz
+package: etc/rrsync dist/secondshot-$(VERSION).tar.gz
 publish: package
 	@echo Publishing python package
 	echo -n $(PYPI_PASSWORD) | keyring set $(PYPI_URL) $(PYPI_USER)
@@ -19,8 +20,8 @@ test_functional:
 
 flake8: test_requirements
 	@echo "Running flake8 code analysis"
-	(. $(VDIR)/bin/activate ; flake8 --exclude=python_env \
-	 --exclude=check_rsnap.py lib tests)
+	(. $(VDIR)/bin/activate ; flake8 --exclude=python_env,secondshot/alembic/versions,check_rsnap.py \
+	 secondshot tests)
 
 python_env: $(VDIR)/bin/python
 
@@ -35,7 +36,7 @@ $(VDIR)/bin/python:
 
 pytest: test_requirements
 	@echo "Running pytest unit tests"
-	cd lib && \
+	cd secondshot && \
 	export PYTHONPATH=. && \
 	(. $(VDIR)/bin/activate ; \
 	py.test $(XARGS) ../tests/unittests/ \
@@ -43,14 +44,19 @@ pytest: test_requirements
 	 --cov-report html \
 	 --cov-report xml \
 	 --cov-report term-missing \
-	 --cov .)
+	 --cov .) || echo "Ignoring results"
 
 dist/secondshot-$(VERSION).tar.gz:
 	@echo "Building package"
 	python setup.py sdist bdist_wheel
 
+etc/rrsync:
+	@echo "Downloading rrsync"
+	wget -q -O $@ $(RRSYNC_URL)
+	chmod +x $@
+
 clean:
-	rm -rf build dist lib/htmlcov python_env *.egg-info \
+	rm -rf build dist etc/rrsync secondshot/htmlcov python_env *.egg-info \
 	 tests/unittests/__pycache__
 	find . -regextype egrep -regex '.*(coverage.xml|results.xml|\.pyc|~)' \
 	 -exec rm -rf {} \;

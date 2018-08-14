@@ -1,0 +1,43 @@
+--- rsnapshot.conf.default
++++ rsnapshot.conf
+@@ -20,7 +20,7 @@
+ 
+ # All snapshots will be stored under this root directory.
+ #
+-snapshot_root	/.snapshots/
++#snapshot_root	/.snapshots/
+ 
+ # If no_create_root is enabled, rsnapshot will not automatically create the
+ # snapshot_root directory. This is particularly useful if you are backing
+@@ -90,10 +90,10 @@
+ # e.g. alpha, beta, gamma, etc.         #
+ #########################################
+ 
+-retain	alpha	6
+-retain	beta	7
+-retain	gamma	4
+-#retain	delta	3
++#retain		alpha	6
++#retain		beta	7
++#retain		gamma	4
++#retain		delta	3
+ 
+ ############################################
+ #              GLOBAL OPTIONS              #
+@@ -223,9 +223,9 @@
+ ###############################
+ 
+ # LOCALHOST
+-backup	/home/		localhost/
+-backup	/etc/		localhost/
+-backup	/usr/local/	localhost/
++#backup	/home/		localhost/
++#backup	/etc/		localhost/
++#backup	/usr/local/	localhost/
+ #backup	/var/log/rsnapshot		localhost/
+ #backup	/etc/passwd	localhost/
+ #backup	/home/foo/My Documents/		localhost/
+@@ -247,4 +247,10 @@
+ 
+ # RSYNC.SAMBA.ORG
+ #backup	rsync://rsync.samba.org/rsyncftp/	rsync.samba.org/rsyncftp/

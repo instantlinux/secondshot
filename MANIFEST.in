@@ -1,0 +1,3 @@
+include VERSION
+include secondshot/alembic.ini
+recursive-include secondshot/alembic *

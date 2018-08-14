@@ -3,10 +3,11 @@
 *.egg-info
 .cache
 .coverage
+__pycache__
 build/
 coverage.xml
 dist/
 htmlcov
 python_env
 results.xml
-__pycache__
+rrsync

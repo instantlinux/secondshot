@@ -35,10 +35,10 @@ class ReadConfig(object):
         for line in fp:
             if '#' in line:
                 line, comment = line.split('#', 1)
-            tokens = line.strip().split()
+            tokens = line.strip().split(None, 2)
             if (len(tokens) == 0):
                 continue
-            elif (len(tokens) < 2 or len(tokens) > 3):
+            elif (len(tokens) < 2):
                 raise SyntaxError('file=%s at line %d\n%s' % (
                     filename, linenum, line))
             key = tokens[0]

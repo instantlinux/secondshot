@@ -31,26 +31,26 @@ class Syslog(object):
 
     def debug(self, msg):
         if (self.log_level == logging.DEBUG):
-            print >>sys.stderr, "DEBUG: %s" % msg
+            sys.stderr.write('DEBUG: %s\n' % msg)
             self.logger.debug('%s %s' % (self.prog, msg))
             with open(self.logfile, 'a') as f:
                 f.write(self._date_prefix('D', msg))
 
     def error(self, msg):
-        print >>sys.stderr, "ERROR: %s" % msg
+        sys.stderr.write('ERROR: %s\n' % msg)
         self.logger.error('%s %s' % (self.prog, msg))
         with open(self.logfile, 'a') as f:
             f.write(self._date_prefix('E', msg))
 
     def info(self, msg):
         if (self.log_level == logging.DEBUG):
-            print >>sys.stderr, "INFO: %s" % msg
+            sys.stderr.write('INFO: %s\n' % msg)
         self.logger.info('%s %s' % (self.prog, msg))
         with open(self.logfile, 'a') as f:
             f.write(self._date_prefix('I', msg))
 
     def warn(self, msg):
-        print >>sys.stderr, "WARN: %s" % msg
+        sys.stderr.write('WARN: %s\n' % msg)
         self.logger.warn('%s %s' % (self.prog, msg))
         with open(self.logfile, 'a') as f:
             f.write(self._date_prefix('W', msg))
