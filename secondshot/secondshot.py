@@ -66,9 +66,15 @@ import subprocess
 import sys
 import time
 
-from . import config
-from . import models
-from . import syslogger
+if (sys.version_info.major == 2):
+    from config import ReadConfig
+    from models import Backup, File, Host, Saveset, Volume
+    from syslogger import Syslog
+else:
+    # Python 3 requires explicit relative-path syntax
+    from .config import ReadConfig
+    from .models import Backup, File, Host, Saveset, Volume
+    from .syslogger import Syslog
 
 DBPASS_FILE = '/run/secrets/secondshot-db-password'
 DBFILE_PATH = '/metadata'
@@ -139,26 +145,26 @@ class Secondshot(object):
             result (dict):    results summary
         """
         try:
-            host = self.session.query(models.Saveset).filter_by(
+            host = self.session.query(Saveset).filter_by(
                 id=saveset_id).one().host.hostname
-            location = self.session.query(models.Saveset).filter_by(
+            location = self.session.query(Saveset).filter_by(
                 id=saveset_id).one().location
-            missing_sha = self.session.query(models.Backup). \
-                join(models.Backup.file). \
-                filter(models.Backup.saveset_id == saveset_id,
-                       models.File.shasum == None,  # noqa: E711
-                       models.File.type == 'f',
-                       models.File.size > 0)
-            saveset = self.session.query(models.Saveset).filter_by(
+            missing_sha = self.session.query(Backup). \
+                join(Backup.file). \
+                filter(Backup.saveset_id == saveset_id,
+                       File.shasum == None,  # noqa: E711
+                       File.type == 'f',
+                       File.size > 0)
+            saveset = self.session.query(Saveset).filter_by(
                 id=saveset_id).one().saveset
         except Exception as ex:
             logger.warn('action=calc_sums msg=%s' % ex.message)
         if (not host or not location):
             sys.exit('action=calc_sums msg=missing host/location')
         total = self.session.query(sqlalchemy.sql.func.sum(
-            models.File.size).label('total')).filter(
-            models.Backup.saveset_id == saveset_id).join(
-            models.Backup, models.File.id == models.Backup.file_id).one()[0]
+            File.size).label('total')).filter(
+            Backup.saveset_id == saveset_id).join(
+            Backup, File.id == Backup.file_id).one()[0]
         logger.info("START action=calc_sums saveset=%s (size=%.3fGB) from "
                     "host=%s for location=%s" %
                     (saveset, float(total) / 1e9, host, location))
@@ -198,11 +204,11 @@ class Secondshot(object):
             result (dict):    results summary
         """
         try:
-            vol = self.session.query(models.Volume).filter_by(
+            vol = self.session.query(Volume).filter_by(
                 volume=volume).one()
-            host_record = self.session.query(models.Host).filter_by(
+            host_record = self.session.query(Host).filter_by(
                 hostname=host).one()
-            saveset = self.session.query(models.Saveset).filter_by(
+            saveset = self.session.query(Saveset).filter_by(
                 id=saveset_id).one()
         except Exception as ex:
             sys.exit('action=inject Invalid host or volume: %s' % ex.message)
@@ -325,7 +331,7 @@ class Secondshot(object):
             sys.exit(
                 'action=rotate interval=%s must be in %s' %
                 (interval, ','.join(sorted(self.intervals.keys()))))
-        host_record = self.session.query(models.Host).filter_by(
+        host_record = self.session.query(Host).filter_by(
             hostname=self.backup_host).one()
         interval_max = int(self.intervals[interval])
 
@@ -351,7 +357,7 @@ class Secondshot(object):
             sys.exit('action=rotate interval=%s unrecognized' % interval)
 
         # delete savesets that match <interval>.<interval_max - 1>
-        count = self.session.query(models.Saveset).filter_by(
+        count = self.session.query(Saveset).filter_by(
             location='%s.%d' % (interval, interval_max - 1),
             backup_host_id=host_record.id).delete()
         if (count > 0):
@@ -371,11 +377,11 @@ class Secondshot(object):
                 'interval': interval, 'host': host_record.id})
 
         # move saveset location=<previous int> to <interval>.0
-        count = self.session.query(models.Saveset).filter(
-            models.Saveset.location == prev,
-            models.Saveset.backup_host_id == host_record.id,
-            models.Saveset.finished is not None).update({
-                models.Saveset.location: '%s.0' % interval})
+        count = self.session.query(Saveset).filter(
+            Saveset.location == prev,
+            Saveset.backup_host_id == host_record.id,
+            Saveset.finished is not None).update({
+                Saveset.location: '%s.0' % interval})
         if (count > 0):
             results.append(dict(
                 host=self.backup_host,
@@ -452,14 +458,14 @@ class Secondshot(object):
             dict: id and name of new record in saveset table
         """
 
-        vol = self.session.query(models.Volume).filter_by(volume=volume).one()
-        host_record = self.session.query(models.Host).filter_by(
+        vol = self.session.query(Volume).filter_by(volume=volume).one()
+        host_record = self.session.query(Host).filter_by(
             hostname=host).one()
-        backup_host_record = self.session.query(models.Host).filter_by(
+        backup_host_record = self.session.query(Host).filter_by(
             hostname=self.backup_host).one()
         if (not host or not vol):
             sys.exit('Invalid host or volume')
-        saveset = models.Saveset(
+        saveset = Saveset(
             saveset='%(host)s-%(volume)s-%(date)s' % dict(
                 host=host,
                 volume=volume,
@@ -497,24 +503,24 @@ class Secondshot(object):
         results = []
         for saveset in savesets:
             try:
-                record = self.session.query(models.Saveset).filter_by(
+                record = self.session.query(Saveset).filter_by(
                         saveset=saveset).one()
             except sqlalchemy.orm.exc.NoResultFound:
                 raise RuntimeError('VERIFY saveset=%s not found' % saveset)
 
-            count = missing = self.session.query(models.Backup).join(
-                    models.File).filter(
-                        models.Backup.saveset_id == record.id,
-                        models.File.type == 'f',
-                        models.File.shasum == None,  # noqa: E711
-                        models.File.size > 0).count()
+            count = missing = self.session.query(Backup).join(
+                    File).filter(
+                        Backup.saveset_id == record.id,
+                        File.type == 'f',
+                        File.shasum == None,  # noqa: E711
+                        File.size > 0).count()
             (errors, skipped) = (0, 0)
-            for file in self.session.query(models.Backup).join(
-                    models.File).filter(
-                        models.Backup.saveset_id == record.id,
-                        models.File.type == 'f',
-                        models.File.shasum != None,  # noqa: E711
-                        models.File.size > 0):
+            for file in self.session.query(Backup).join(
+                    File).filter(
+                        Backup.saveset_id == record.id,
+                        File.type == 'f',
+                        File.shasum != None,  # noqa: E711
+                        File.size > 0):
                 count += 1
                 if (self.hashtype != self._hashtype(file.file.shasum)):
                     self.hashtype = self._hashtype(file.file.shasum)
@@ -555,8 +561,8 @@ class Secondshot(object):
 
     def list_hosts(self, filter):
         """List hosts"""
-        items = self.session.query(models.Host).filter(
-            models.Host.hostname.like(filter)).order_by('hostname')
+        items = self.session.query(Host).filter(
+            Host.hostname.like(filter)).order_by('hostname')
         return {'hosts': [dict(
                     name=item.hostname,
                     created=item.created.strftime(self.time_fmt)
@@ -564,8 +570,8 @@ class Secondshot(object):
 
     def list_savesets(self, filter):
         """List savesets"""
-        items = self.session.query(models.Saveset).filter(
-            models.Saveset.saveset.like(filter)).order_by('saveset')
+        items = self.session.query(Saveset).filter(
+            Saveset.saveset.like(filter)).order_by('saveset')
         return {'savesets': [dict(
                     name=item.saveset, location=item.location,
                     created=item.created.strftime(self.time_fmt),
@@ -576,8 +582,8 @@ class Secondshot(object):
 
     def list_volumes(self, filter):
         """List volumes"""
-        items = self.session.query(models.Volume).filter(
-            models.Volume.volume.like(filter)).order_by('volume')
+        items = self.session.query(Volume).filter(
+            Volume.volume.like(filter)).order_by('volume')
         return {'volumes': [dict(
                     name=item.volume, path=item.path, size=item.size,
                     created=item.created.strftime(self.time_fmt),
@@ -656,9 +662,9 @@ class Secondshot(object):
 def main():
     global logger
     opts = docopt.docopt(__doc__)
-    logger = syslogger.Syslog(opts)
+    logger = Syslog(opts)
     obj = Secondshot(opts)
-    obj.rsnapshot_cfg = config.ReadConfig().rsnapshot_cfg(
+    obj.rsnapshot_cfg = ReadConfig().rsnapshot_cfg(
         opts['--rsnapshot-conf'])
     if ('snapshot_root' in obj.rsnapshot_cfg):
         obj.snapshot_root = obj.rsnapshot_cfg['snapshot_root'].rstrip('/')

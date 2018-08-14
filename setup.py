@@ -34,7 +34,7 @@ setuptools.setup(
     version=__version__,
     name='secondshot',
     description='Linux-based backup utility',
-    long_description = __long_desc__,
+    long_description=__long_desc__,
     long_description_content_type='text/markdown',
     author='Rich Braun',
     author_email='richb@instantlinux.net',

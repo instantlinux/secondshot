@@ -1,73 +1,67 @@
-pypiLocalCreds = [[$class: 'UsernamePasswordMultiBinding',
-                   credentialsId: 'pypi-local',
-                   usernameVariable: 'PYPI_USER',
-                   passwordVariable: 'PYPI_PASSWOR']]
-pipeline {
-  agent { label 'swarm' }
-  stages {
-    stage('Static Code Analysis') {
-      steps {
-        sh "make analysis"
-      }
-    }
-    stage('Unit Tests') {
-      steps {
-	sh "make test"
-        junit '**/*.xml'
-      }
-    }
-    stage('Publish Package') {
-      steps {
-        withCredentials(pypiLocalCreds) {
-	  script {
-	    sh "make publish"
-          }
+// Pipeline for python package / docker-image build
+//  created by richb@instantlinux.net 14-aug-2018
+
+node('swarm') {
+    def buildDate = java.time.Instant.now().toString()
+    def maintainer = 'richb@instantlinux.net'
+    def localCACreds = file(credentialsId: 'local-root-ca', variable: 'SSL_CHAIN')
+    def pypiLocalCreds = [$class: 'UsernamePasswordMultiBinding',
+                          credentialsId: 'pypi-local',
+                          usernameVariable: 'PYPI_USER',
+                          passwordVariable: 'PYPI_PASSWORD']
+    def registry = 'nexus.instantlinux.net'
+    def registryCreds = [credentialsId: 'docker-registry',
+                         url: "https://${registry}"]
+    def service = env.JOB_NAME.split('/', 2)[0]
+
+    try {
+        stage('Static Code Analysis') {
+            checkout scm
+            sh 'make analysis'
         }
-      }
+        stage('Unit Tests') {
+            sh 'make test'
+            junit '**/*.xml'
+        }
+        stage('Publish Package') {
+            withCredentials([pypiLocalCreds, localCACreds]) {
+                sh 'make publish'
+            }
+        }
+        stage('Create Image') {
+            gitCommit = checkout(scm).GIT_COMMIT
+            imageTag = "dev_build_${env.BUILD_NUMBER}_${gitCommit.take(7)}"
+            img = docker.build("${registry}/${service}:${imageTag}",
+                               "--build-arg=VCS_REF=${gitCommit} " +
+                               "--build-arg=BUILD_DATE=${buildDate} .")
+        }
+        stage('Push Image') {
+            withDockerRegistry(registryCreds) {
+                img.push imageTag
+            }
+        }
+        stage('Verify & Promote') {
+            sh 'make test_functional'
+            withDockerRegistry(registryCreds) {
+                img.push 'latest'
+            }
+        }
     }
-    stage('Create Image') {
-      steps {
-	script {
-	  img = docker.build "${registry}/${env.JOB_NAME}:build_${env.BUILD_NUMBER}"
-	}
-      }
+    catch (Exception ex) {
+        echo "Exception caught: ${ex.getMessage()}"
+        currentBuild.result = 'FAILURE'
     }
-    stage('Push Image') {
-      steps {
-	script {
-	  img.push "build_$env.BUILD_NUMBER"
-	}
-      }
+    finally {
+        currentBuild.result = currentBuild.result ?: 'SUCCESS'
+        emailext (
+            to: maintainer,
+            subject: "Job ${env.JOB_NAME} #${env.BUILD_NUMBER} ${currentBuild.result}",
+            body: "Build URL: ${env.BUILD_URL}.\nDocker Image ${registry}/${service}\n",
+            attachLog: true
+        )
+        stage('Clean') {
+            sh "docker rmi ${registry}/${service}:${imageTag}"
+            deleteDir()
+        }
     }
-    stage('Functional Tests') {
-      steps {
-	sh "make test_functional"
-	script {
-	  img.push "latest"
-	}
-      }
-    }
-  }
-  post {
-    always {
-      deleteDir()
-    }
-    success {
-      emailext (
-	to: 'richb@pioneer.ci.net',
-	subject: "Job ${env.JOB_NAME} #${env.BUILD_NUMBER} success",
-	body: "Build URL: ${env.BUILD_URL}.\n",
-	attachLog: true
-      )
-    }
-    failure {
-      sh "docker rmi ${registry}/${env.JOB_NAME}:build_${env.BUILD_NUMBER}"
-      emailext (
-	to: 'richb@pioneer.ci.net',
-	subject: "Job ${env.JOB_NAME} #${env.BUILD_NUMBER} failed",
-	body: "Failed build URL: ${env.BUILD_URL}.\n",
-	attachLog: true
-      )
-    }
-  }
 }

@@ -12,8 +12,9 @@ test: pytest
 package: etc/rrsync dist/secondshot-$(VERSION).tar.gz
 publish: package
 	@echo Publishing python package
-	echo -n $(PYPI_PASSWORD) | keyring set $(PYPI_URL) $(PYPI_USER)
-	twine upload --cert=$(SSL_CHAIN) --repository-url $(PYPI_URL) -u $(PYPI_USER) dist/*
+	(. $(VDIR)/bin/activate && \
+	 twine upload --cert=$(SSL_CHAIN) --repository-url $(PYPI_URL) \
+	   -u $(PYPI_USER) -p $(PYPI_PASSWORD) dist/*)
 
 test_functional:
 	@echo "Run Functional Tests - not yet implemented"
@@ -44,11 +45,11 @@ pytest: test_requirements
 	 --cov-report html \
 	 --cov-report xml \
 	 --cov-report term-missing \
-	 --cov .) || echo "Ignoring results"
+	 --cov .)
 
 dist/secondshot-$(VERSION).tar.gz:
 	@echo "Building package"
-	python setup.py sdist bdist_wheel
+	(. $(VDIR)/bin/activate && python setup.py sdist bdist_wheel)
 
 etc/rrsync:
 	@echo "Downloading rrsync"

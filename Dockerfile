@@ -35,5 +35,5 @@ RUN cd /build && make package && \
     sha256sum -c checksum && \
     rm -fr /build 
 
-COPY entrypoint.sh /usr/local/bin
+COPY bin/entrypoint.sh /usr/local/bin
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
