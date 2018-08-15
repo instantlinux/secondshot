@@ -9,7 +9,7 @@ VDIR=$(PWD)/$(VENV)
 
 analysis: flake8
 test: pytest
-package: etc/rrsync dist/secondshot-$(VERSION).tar.gz
+package: bin/rrsync dist/secondshot-$(VERSION).tar.gz
 publish: package
 	@echo Publishing python package
 	(. $(VDIR)/bin/activate && \
@@ -21,7 +21,7 @@ test_functional:
 
 flake8: test_requirements
 	@echo "Running flake8 code analysis"
-	(. $(VDIR)/bin/activate ; flake8 --exclude=python_env,secondshot/alembic/versions,check_rsnap.py \
+	(. $(VDIR)/bin/activate ; flake8 --exclude=python_env,check_rsnap.py \
 	 secondshot tests)
 
 python_env: $(VDIR)/bin/python
@@ -49,15 +49,22 @@ pytest: test_requirements
 
 dist/secondshot-$(VERSION).tar.gz:
 	@echo "Building package"
-	python setup.py sdist bdist_wheel
+	pip show wheel >/dev/null; \
+	if [ $$? -ne 0 ]; then \
+	  (. $(VDIR)/bin/activate ; python setup.py sdist bdist_wheel); \
+	else \
+	  python setup.py sdist bdist_wheel ; \
+	fi
 
-etc/rrsync:
+bin/rrsync:
 	@echo "Downloading rrsync"
 	wget -q -O $@ $(RRSYNC_URL)
 	chmod +x $@
 
 clean:
-	rm -rf build dist etc/rrsync secondshot/htmlcov python_env *.egg-info \
+	rm -rf build dist bin/rrsync secondshot/htmlcov *.egg-info \
 	 tests/unittests/__pycache__
 	find . -regextype egrep -regex '.*(coverage.xml|results.xml|\.pyc|~)' \
 	 -exec rm -rf {} \;
+wipe_clean: clean
+	rm -rf python_env

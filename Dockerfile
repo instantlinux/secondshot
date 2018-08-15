@@ -8,24 +8,33 @@ LABEL org.label-schema.build-date=$BUILD_DATE \
     org.label-schema.vcs-ref=$VCS_REF \
     org.label-schema.vcs-url=https://github.com/instantlinux/docker-tools
 
-ENV TZ=UTC
+ENV CRON_HOUR=0,8,16 \
+    CRON_MINUTE=30 \
+    DBHOST=db00 \
+    DBNAME=secondshot \
+    DBPORT=3306 \
+    DBUSER=bkp \
+    DBTYPE=sqlite \
+    TZ=UTC
 
 ARG RSNAPSHOT_VERSION=1.4.2-r0
-ARG SECONDSHOT_VERSION=0.9.0
+ARG SECONDSHOT_VERSION=0.9.1
 ARG RRSYNC_SHA=8c9482dee40c77622e3bde2da3967cc92a0b04e0c0ce3978738410d2dbd3d436
 
-VOLUME /metadata
+VOLUME /backups /metadata /etc/secondshot/conf.d
 
 COPY requirements/common.txt /tmp/
 RUN apk add --no-cache --update rsnapshot=$RSNAPSHOT_VERSION dcron make \
       tzdata && \
     apk add --no-cache --virtual .fetch-deps gcc libffi-dev musl-dev \
-      openssl-dev && \
+      openssl-dev shadow && \
     pip install -r /tmp/common.txt && \
+    adduser -s /bin/sh -S -D -G adm secondshot && \
+    usermod -o -u 0 secondshot && \
     apk del .fetch-deps && rm -fr /var/cache/apk/* /tmp/*
 
 COPY etc/backup-daily.conf /etc/
-COPY . /build
+COPY . /build/
 RUN cd /build && make package && \
     pip install file:///build/dist/secondshot-$SECONDSHOT_VERSION.tar.gz && \
     cp /etc/rsnapshot.conf.default /etc/rsnapshot.conf && \

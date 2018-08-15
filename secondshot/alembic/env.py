@@ -4,7 +4,10 @@ import os
 from sqlalchemy import engine_from_config, pool
 from logging.config import fileConfig
 
-from secondshot import models
+# for autogenerate, uncomment and set PYTHONPATH to the models.py path and set
+# target_metadata as below
+
+# uncomment# import models
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -20,7 +23,8 @@ fileConfig(config.config_file_name)
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = models.metadata
+target_metadata = None
+# uncomment#  target_metadata = models.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

@@ -18,6 +18,22 @@ Base = declarative_base()
 metadata = Base.metadata
 
 
+class ConfigTable(Base):
+    __tablename__ = 'config'
+    __table_args__ = (
+        Index('index1', 'keyword', 'host_id', unique=True),
+    )
+
+    id = Column(INTEGER, primary_key=True, unique=True,
+                autoincrement=True)
+    keyword = Column(String(32), nullable=False)
+    value = Column(String(1023), nullable=True)
+    created = Column(TIMESTAMP, nullable=False, server_default=func.now())
+    host_id = Column(ForeignKey(u'hosts.id'), nullable=False, index=True)
+
+    host = relationship('Host')
+
+
 class Host(Base):
     __tablename__ = 'hosts'
 

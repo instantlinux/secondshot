@@ -1,3 +1,5 @@
+include LICENSE.txt
 include VERSION
+include etc/backup-daily.conf
 include secondshot/alembic.ini
 recursive-include secondshot/alembic *

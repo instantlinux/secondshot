@@ -42,7 +42,7 @@ setuptools.setup(
     entry_points={
       'console_scripts': ['secondshot=secondshot.secondshot:main']
     },
-    scripts=['bin/check_rsnap.py', 'bin/cron-secondshot.sh', 'etc/rrsync'],
+    scripts=['bin/check_rsnap.py', 'bin/cron-secondshot.sh', 'bin/rrsync'],
     packages=setuptools.find_packages(exclude=['tests']),
     include_package_data=True,
     install_requires=[

@@ -1,17 +1,16 @@
 #!/usr/bin/env python
-"""secondshot
-
-Linux-based backup utility with integrity-verification
+"""Linux-based backup utility with integrity-verification
 
 created 28-jul-2018 by richb@instantlinux.net
 
 Usage:
   secondshot [--action=ACTION] [--dbhost=HOST] [--dbuser=USER] [--dbpass=PASS]
-           [--dbname=DB] [--dbport=PORT] [--dbtype=TYPE]
+           [--dbname=DB] [--dbport=PORT] [--dbtype=TYPE] [--db-url=URL]
            [--backup-host=HOST] [--host=HOST]... [--logfile=FILE]
            [--list-hosts] [--list-savesets] [--list-volumes]
            [--filter=STR] [--format=FORMAT] [--hashtype=ALGORITHM]
-           [--rsnapshot-conf=FILE] [--autoverify=BOOL] [--volume=VOL] [-v]...
+           [--rsnapshot-conf=FILE] [--autoverify=BOOL] [--sequence=VALUES]
+           [--volume=VOL] [-v]...
   secondshot --action=start --host=HOST --volume=VOL [--autoverify=BOOL]
            [-v]...
   secondshot --action=rotate --interval=INTERVAL [-v]...
@@ -20,16 +19,16 @@ Usage:
 
 Options:
   --action=ACTION       Action to take (archive, rotate, start)
-  --backup-host=HOST    Hostname taking the backup
-  --dbhost=HOST         DB host [default: db00]
-  --dbname=DB           DB name [default: rsnap]
-  --dbport=PORT         DB port [default: 18306]
-  --dbuser=USER         DB user [default: bkp]
+  --backup-host=HOST    Hostname taking the backup (default hostname -s)
+  --dbhost=HOST         DB host (default: db00)
+  --dbname=DB           DB name (default: secondshot)
+  --dbport=PORT         DB port (default: 3306)
+  --dbuser=USER         DB user (default: bkp)
   --dbpass=PASS         DB password (default env variable DBPASS)
-  --dbtype=TYPE         DB type, e.g. sqlite [default: mysql+pymysql]
+  --dbtype=TYPE         DB type, e.g. mysql+pymysql (default: sqlite)
+  --db-url=URL          Full URL (alternative to above DB specifiers)
   --host=HOST           Source host(s) to back up
-  --interval=INTERVAL   Rotation interval: hourly, daysago, weeksago,
-                        semiannually, yearsago or main
+  --interval=INTERVAL   Rotation interval: e.g. hourly, daysago
   --list-hosts          List hosts
   --list-savesets       List savesets
   --list-volumes        List volumes
@@ -37,11 +36,13 @@ Options:
   --format=FORMAT       Format (text or json) [default: text]
   --logfile=FILE        Logging destination [default: /var/log/secondshot]
   --rsnapshot-conf=FILE Path of rsnapshot's config file
-                        [default: /etc/backup-daily.conf]
-  --autoverify=BOOL     Verify each just-created saveset [default: yes]
-  --hashtype=ALGORITHM  Hash algorithm md5, sha256, sha512 [default: md5]
+                        (default: /etc/backup-daily.conf)
+  --sequence=VALUES     Sequence of retention intervals
+                        [default: hourly,daysago,weeksago,monthsago,semiannually,yearsago]  # noqa: E501
+  --autoverify=BOOL     Verify each just-created saveset (default: yes)
+  --hashtype=ALGORITHM  Hash algorithm md5, sha256, sha512 (default: md5)
   --verify=SAVESET      Verify checksums of stored files
-  --volume=VOLUME       Volume to back up
+  --volume=VOLUME       Volume for storing saveset
   -v --verbose          Verbose output
   -h --help             List options
 
@@ -78,8 +79,18 @@ else:
 
 DBPASS_FILE = '/run/secrets/secondshot-db-password'
 DBFILE_PATH = '/metadata'
-DEFAULT_SEQUENCE = ['hourly', 'daysago', 'weeksago', 'monthsago',
-                    'semiannually', 'yearsago']
+DBOPTS_ALLOW = ['autoverify', 'hashtype', 'host', 'rsnapshot-conf', 'volume']
+OPTS_DEFAULTS = {
+    'autoverify': 'yes',
+    'dbhost': 'db00',
+    'dbname': 'secondshot',
+    'dbpass': None,
+    'dbport': '3306',
+    'dbtype': 'sqlite',
+    'dbuser': 'bkp',
+    'db-url': None,
+    'hashtype': 'md5',
+    'rsnapshot-conf': '/etc/backup-daily.conf'}
 SNAPSHOT_ROOT = '/var/backup'
 SYNC_PATH = '.sync'
 
@@ -88,53 +99,95 @@ class Secondshot(object):
     global logger
 
     def __init__(self, opts):
-        self.backup_host = socket.gethostname().split('.')[0]
-        if (opts['--format'] in ['json', 'text']):
-            self.format = opts['--format']
-        else:
-            sys.exit('format must be json or text')
-        if (opts['--hashtype'] in ['md5', 'sha256', 'sha512']):
-            self.hashtype = opts['--hashtype']
-        else:
-            sys.exit('hashtype must be md5, sha256 or sha512')
-        self.rsnapshot_conf = opts['--rsnapshot-conf']
-        self.sequence = DEFAULT_SEQUENCE
-        self.snapshot_root = SNAPSHOT_ROOT
-        self.time_fmt = '%Y-%m-%d %H:%M:%S'
-        if (opts['--dbtype'] == 'sqlite'):
-            db_url = ('sqlite:////%(path)s/%(database)' % {
+        """Initialize database session"""
+
+        for item in ['dbhost', 'dbname', 'dbpass', 'dbport', 'dbtype',
+                     'dbuser', 'db-url']:
+            if (not opts[item]):
+                opts[item] = os.environ.get(item.upper().replace('-', '_'),
+                                            OPTS_DEFAULTS[item])
+        if (opts['dbtype'] == 'sqlite'):
+            db_url = ('sqlite:////%(path)s/%(database)s' % {
                           'path': DBFILE_PATH,
-                          'database': opts['--dbname']
+                          'database': opts['dbname']
                       })
         else:
-            pw = ''
-            db_url = None
-            if ('--db-url' in opts):
-                db_url = opts['--db-url']
-            elif ('DB_URL' in os.environ):
-                db_url = os.environ['db_url']
-            elif ('--db-pass' in opts):
-                pw = opts['--dbpass']
-            elif ('DBPASS' in os.environ):
-                pw = os.environ['DBPASS']
-            elif(os.path.isfile(DBPASS_FILE)):
-                pw = open(DBPASS_FILE, 'r').read()
+            if (opts['db-url']):
+                db_url = opts['db-url']
             else:
-                logger.warn('Database password is not set')
-
-            if (not db_url):
+                pw = opts['dbpass']
+                if(not pw and os.path.isfile(DBPASS_FILE)):
+                    pw = open(DBPASS_FILE, 'r').read()
+                else:
+                    logger.warn('Database password is not set')
                 db_url = ('%(dbtype)s://%(user)s:%(password)s@'
                           '%(endpoint)s/%(database)s' % {
-                              'dbtype': opts['--dbtype'],
-                              'user': opts['--dbuser'],
+                              'dbtype': opts['dbtype'],
+                              'user': opts['dbuser'],
                               'password': pw,
-                              'endpoint': '%s:%d' % (opts['--dbhost'],
-                                                     int(opts['--dbport'])),
-                              'database': opts['--dbname']
+                              'endpoint': '%s:%d' % (opts['dbhost'],
+                                                     int(opts['dbport'])),
+                              'database': opts['dbname']
                           })
         self.engine = create_engine(db_url)
         self.session = sqlalchemy.orm.scoped_session(
             sqlalchemy.orm.sessionmaker(autocommit=False, bind=self.engine))
+
+    def set_options(self, cli_opts):
+        """Read additional options from ConfigTable in database, apply
+        precedence rules (there are limitations due to issue cited at
+        https://github.com/docopt/docopt/issues/341) and make them
+        available as instance variables
+
+        Args:
+            cli_opts (dict): command-line as parsed by docopt
+        """
+
+        if (cli_opts['backup-host']):
+            self.backup_host = cli_opts['backup-host']
+        else:
+            self.backup_host = socket.gethostname().split('.')[0]
+        cfg = ReadConfig()
+        opts = cfg.get_config_from_db(self.session, self.backup_host)
+        try:
+            cfg.validate_configs(opts, DBOPTS_ALLOW)
+        except ValueError as ex:
+            sys.exit('ERROR: DB configuration %s' % ex.message)
+        for key, value in cli_opts.items():
+            if (key not in opts):
+                opts[key] = value
+        for key, value in OPTS_DEFAULTS.items():
+            if (opts[key] is None):
+                opts[key] = value
+        try:
+            cfg.validate_configs(opts, cli_opts.keys())
+        except ValueError as ex:
+            sys.exit('ERROR: %s' % ex.message)
+
+        logger.debug("Running with options %s" % str(opts))
+
+        if (opts['autoverify'].lower() in ['false', 'no', 'off']):
+            self.autoverify = False
+        elif (opts['autoverify'].lower() in ['true', 'yes', 'on']):
+            self.autoverify = True
+        self.filter = opts['filter'].replace('*', '%')
+        self.format = opts['format']
+        self.hashtype = opts['hashtype']
+        self.hosts = opts['host']
+        self.rsnapshot_conf = opts['rsnapshot-conf']
+        self.rsnapshot_cfg = cfg.rsnapshot_cfg(opts['rsnapshot-conf'])
+        self.sequence = opts['sequence'].split(',')
+        self.snapshot_root = SNAPSHOT_ROOT
+        self.time_fmt = '%Y-%m-%d %H:%M:%S'
+        self.volume = opts['volume']
+
+        if ('snapshot_root' in self.rsnapshot_cfg):
+            self.snapshot_root = self.rsnapshot_cfg[
+                'snapshot_root'].rstrip('/')
+        if ('retain' in self.rsnapshot_cfg):
+            self.intervals = self.rsnapshot_cfg['retain']
+        else:
+            self.intervals = self.rsnapshot_cfg['interval']
 
     def calc_sums(self, saveset_id):
         """Calculate checksums for any files that haven't already been stored
@@ -393,7 +446,7 @@ class Secondshot(object):
         self.session.commit()
         return {'rotate': dict(status='ok', actions=results)}
 
-    def start(self, hosts, volume, autoverify):
+    def start(self, hosts, volume):
         """Start a backup for each of the specified hosts; if
         successful, also calculate sha checksums for any missing
         entries and re-read each stored file to verify
@@ -401,7 +454,6 @@ class Secondshot(object):
         Args:
             hosts (list):      hosts to back up
             volume (str):      volume path of destination
-            autoverify (bool): verify
         Returns:
             dict: operations performed
         """
@@ -437,7 +489,7 @@ class Secondshot(object):
                 status = 'error'
                 continue
             results.append(self.calc_sums(saveset_id))
-            if (autoverify):
+            if (self.autoverify):
                 try:
                     result = self.verify([new_saveset['saveset']])
                     results.append(result)
@@ -559,19 +611,19 @@ class Secondshot(object):
             status='ok' if errors == 0 else 'error',
             results=results)}
 
-    def list_hosts(self, filter):
+    def list_hosts(self):
         """List hosts"""
         items = self.session.query(Host).filter(
-            Host.hostname.like(filter)).order_by('hostname')
+            Host.hostname.like(self.filter)).order_by('hostname')
         return {'hosts': [dict(
                     name=item.hostname,
                     created=item.created.strftime(self.time_fmt)
                     ) for item in items]}
 
-    def list_savesets(self, filter):
+    def list_savesets(self):
         """List savesets"""
         items = self.session.query(Saveset).filter(
-            Saveset.saveset.like(filter)).order_by('saveset')
+            Saveset.saveset.like(self.filter)).order_by('saveset')
         return {'savesets': [dict(
                     name=item.saveset, location=item.location,
                     created=item.created.strftime(self.time_fmt),
@@ -580,10 +632,10 @@ class Secondshot(object):
                     finished=item.finished.strftime(self.time_fmt) if
                              item.finished else None) for item in items]}
 
-    def list_volumes(self, filter):
+    def list_volumes(self):
         """List volumes"""
         items = self.session.query(Volume).filter(
-            Volume.volume.like(filter)).order_by('volume')
+            Volume.volume.like(self.filter)).order_by('volume')
         return {'volumes': [dict(
                     name=item.volume, path=item.path, size=item.size,
                     created=item.created.strftime(self.time_fmt),
@@ -627,8 +679,9 @@ class Secondshot(object):
         elif (len(shasum) == 64):
             return 'sha512'
         else:
-            raise RuntimeError('Hash type of %s unrecognized' %
-                               binascii.hexlify(shasum))
+            msg = ('Hash type of %s unrecognized' % binascii.hexlify(shasum))
+            logger.error(msg)
+            raise RuntimeError(msg)
 
     @staticmethod
     def _filetype(mode):
@@ -661,43 +714,29 @@ class Secondshot(object):
 
 def main():
     global logger
-    opts = docopt.docopt(__doc__)
+    opts = ReadConfig().docopt_convert(docopt.docopt(__doc__))
     logger = Syslog(opts)
     obj = Secondshot(opts)
-    obj.rsnapshot_cfg = ReadConfig().rsnapshot_cfg(
-        opts['--rsnapshot-conf'])
-    if ('snapshot_root' in obj.rsnapshot_cfg):
-        obj.snapshot_root = obj.rsnapshot_cfg['snapshot_root'].rstrip('/')
-    if ('retain' in obj.rsnapshot_cfg):
-        obj.intervals = obj.rsnapshot_cfg['retain']
-    else:
-        obj.intervals = obj.rsnapshot_cfg['interval']
-    filter = opts['--filter'].replace('*', '%')
+    obj.set_options(opts)
+
     result = {}
     status = 'ok'
 
-    if (opts['--autoverify'].lower() in ['false', 'no', 'off']):
-        autoverify = False
-    elif (opts['--autoverify'].lower() in ['true', 'yes', 'on']):
-        autoverify = True
-    else:
-        sys.exit('Unknown value: --autoverify=BOOL')
-
-    if (opts['--list-hosts']):
-        result = obj.list_hosts(filter=filter)
-    elif (opts['--list-savesets']):
-        result = obj.list_savesets(filter=filter)
-    elif (opts['--list-volumes']):
-        result = obj.list_volumes(filter=filter)
-    elif (opts['--verify']):
-        result = obj.verify(opts['--verify'])
-    elif (opts['--action'] == 'start'):
-        result = obj.start(opts['--host'], opts['--volume'], autoverify)
+    if (opts['list-hosts']):
+        result = obj.list_hosts()
+    elif (opts['list-savesets']):
+        result = obj.list_savesets()
+    elif (opts['list-volumes']):
+        result = obj.list_volumes()
+    elif (opts['verify']):
+        result = obj.verify(opts['verify'])
+    elif (opts['action'] == 'start'):
+        result = obj.start(obj.hosts, obj.volume)
         status = result['start']['status']
-    elif (opts['--action'] == 'rotate'):
-        result = obj.rotate(opts['--interval'])
+    elif (opts['action'] == 'rotate'):
+        result = obj.rotate(opts['interval'])
     else:
-        sys.exit('Unknown action: %s' % opts['--action'])
+        sys.exit('Unknown action: %s' % opts['action'])
 
     if (obj.format == 'json'):
         sys.stdout.write(json.dumps(result) + '\n')

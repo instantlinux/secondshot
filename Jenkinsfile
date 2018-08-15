@@ -3,8 +3,14 @@
 
 node('swarm') {
     def buildDate = java.time.Instant.now().toString()
-    def maintainer = 'richb@instantlinux.net'
-    def localCACreds = file(credentialsId: 'local-root-ca', variable: 'SSL_CHAIN')
+    def maintainer = 'docker@instantlinux.net'
+    def coberturaPublish = [
+        $class: 'CoberturaPublisher', autoUpdateHealth: false,
+        autoUpdateStability: false, coberturaReportFile: '**/coverage.xml',
+        failUnhealthy: false, failUnstable: false, maxNumberOfBuilds: 0,
+        onlyStable: false, sourceEncoding: 'UTF_8', zoomCoverageChart: false]
+    def localCACreds = file(
+        credentialsId: 'local-root-ca', variable: 'SSL_CHAIN')
     def pypiLocalCreds = [$class: 'UsernamePasswordMultiBinding',
                           credentialsId: 'pypi-local',
                           usernameVariable: 'PYPI_USER',
@@ -22,6 +28,7 @@ node('swarm') {
         stage('Unit Tests') {
             sh 'make test'
             junit '**/*.xml'
+            step(coberturaPublish)
         }
         stage('Publish Package') {
             withCredentials([pypiLocalCreds, localCACreds]) {

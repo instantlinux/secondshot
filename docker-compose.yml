@@ -1,0 +1,39 @@
+version: "3.1"
+
+services:
+  app:
+    image: ${REGISTRY_URI:-instantlinux}/secondshot:latest
+    hostname: secondshot
+    environment:
+      DBHOST: ${DB_HOST:-db00}
+      DBNAME: ${DBNAME_SECONDSHOT:-secondshot}
+      DBPORT: ${DBPORT_SECONDSHOT:-3306}
+      DBTYPE: ${DBTYPE_SECONDSHOT:-sqlite}
+      TZ: ${TZ:-UTC}
+    ports:
+    - ${PORT_SECONDSHOT:-5000}:5000
+    volumes:
+    - backups:/backups
+    - metadata:/metadata
+    - $ADMIN_PATH/secondshot/etc:/etc/secondshot/conf.d:ro
+    - $ADMIN_PATH/secondshot/ssh/id_rsa.pub:/home/secondshot/.ssh/id_rsa.pub:ro
+    # list of volumes to back up, customize as needed
+    - /home:/backup/home:ro
+    secrets:
+    - secondshot-db-password
+    - secondshot-rsync-sshkey
+    deploy:
+      placement:
+        constraints:
+        - node.labels.swarm-sync == peer
+
+volumes:
+  backups:
+  config:
+  metadata:
+
+secrets:
+  secondshot-db-password:
+    external: true
+  secondshot-rsync-sshkey:
+    external: true
