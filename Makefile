@@ -49,7 +49,7 @@ pytest: test_requirements
 
 dist/secondshot-$(VERSION).tar.gz:
 	@echo "Building package"
-	(. $(VDIR)/bin/activate && python setup.py sdist bdist_wheel)
+	python setup.py sdist bdist_wheel
 
 etc/rrsync:
 	@echo "Downloading rrsync"
