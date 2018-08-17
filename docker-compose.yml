@@ -5,6 +5,8 @@ services:
     image: ${REGISTRY_URI:-instantlinux}/secondshot:latest
     hostname: secondshot
     environment:
+      CRON_HOUR: ${SECONDSHOT_CRON_HOUR:-1,9,17}
+      CRON_MINUTE: ${SECONDSHOT_CRON_MINUTE:-15}
       DBHOST: ${DB_HOST:-db00}
       DBNAME: ${DBNAME_SECONDSHOT:-secondshot}
       DBPORT: ${DBPORT_SECONDSHOT:-3306}
@@ -18,19 +20,38 @@ services:
     - $ADMIN_PATH/secondshot/etc:/etc/secondshot/conf.d:ro
     - $ADMIN_PATH/secondshot/ssh/id_rsa.pub:/home/secondshot/.ssh/id_rsa.pub:ro
     # list of volumes to back up, customize as needed
+    - dovecot_inbox:/backup/inbox:ro
+    - dovecot_webmail:/backup/webmail:ro
     - /home:/backup/home:ro
+    - /pc:/backup/pc:ro
+    - proftpd_ftp:/backup/ftp:ro
+    - samba_dos:/backup/samba_dos:ro
+    - sambadc_lib:/backup/sambadc:ro
+    - user_home:/backup/u:ro
+    - ${SHARE_PATH}:/backup/share:ro
     secrets:
     - secondshot-db-password
     - secondshot-rsync-sshkey
     deploy:
       placement:
         constraints:
-        - node.labels.swarm-sync == peer
+        - node.labels.swarm-sync == primary
 
 volumes:
   backups:
-  config:
   metadata:
+  dovecot_inbox:
+    external: true
+  dovecot_webmail:
+    external: true
+  proftpd_ftp:
+    external: true
+  samba_dos:
+    external: true
+  sambadc_lib:
+    external: true
+  user_home:
+    external: true
 
 secrets:
   secondshot-db-password:

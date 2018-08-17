@@ -23,19 +23,19 @@ ARG RRSYNC_SHA=8c9482dee40c77622e3bde2da3967cc92a0b04e0c0ce3978738410d2dbd3d436
 
 VOLUME /backups /metadata /etc/secondshot/conf.d
 
-COPY requirements/common.txt /tmp/
+COPY requirements.txt /tmp/
 RUN apk add --no-cache --update rsnapshot=$RSNAPSHOT_VERSION dcron make \
       tzdata && \
     apk add --no-cache --virtual .fetch-deps gcc libffi-dev musl-dev \
       openssl-dev shadow && \
-    pip install -r /tmp/common.txt && \
+    pip install -r /tmp/requirements.txt && \
     adduser -s /bin/sh -S -D -G adm secondshot && \
     usermod -o -u 0 secondshot && \
     apk del .fetch-deps && rm -fr /var/cache/apk/* /tmp/*
 
 COPY etc/backup-daily.conf /etc/
 COPY . /build/
-RUN cd /build && make package && \
+RUN cd /build && ls -lR && make package && \
     pip install file:///build/dist/secondshot-$SECONDSHOT_VERSION.tar.gz && \
     cp /etc/rsnapshot.conf.default /etc/rsnapshot.conf && \
     patch /etc/rsnapshot.conf /build/etc/rsnapshot.conf.patch && \

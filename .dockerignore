@@ -1,0 +1,5 @@
+.git
+**/htmlcov/
+build/
+dist/
+python_env/

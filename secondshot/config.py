@@ -7,24 +7,179 @@ created 11-aug-2018 by richb@instantlinux.net
 license: lgpl-2.1
 """
 
+import os
+import sqlalchemy.exc
 import sys
 
 if (sys.version_info.major == 2):
+    from constants import Constants
     from models import ConfigTable, Host
+    from syslogger import Syslog
 else:
+    from .constants import Constants
     from .models import ConfigTable, Host
+    from .syslogger import Syslog
 
 
-class ReadConfig(object):
+class Config(object):
 
-    def rsnapshot_cfg(self, filename):
+    autoverify = Constants.OPTS_DEFAULTS['autoverify']
+    hashtype = Constants.OPTS_DEFAULTS['hashtype']
+    rsnapshot_conf = Constants.OPTS_DEFAULTS['rsnapshot-conf']
+    sequence = None
+    snapshot_root = Constants.SNAPSHOT_ROOT
+
+    def get_config_from_db(self, db_session, hostname):
+        """Read host-specific from config table
+
+        Args:
+            db_session (obj): sqlalchemy session
+        Returns:
+            result (dict):  key/value pairs found in database
+        """
+
+        result = {}
+        for record in db_session.query(ConfigTable).join(
+                ConfigTable.host).filter(Host.hostname == hostname):
+            if (record.keyword == 'host'):
+                result[record.keyword] = record.value.split(',')
+            else:
+                result[record.keyword] = record.value
+        return result
+
+    @staticmethod
+    def get_db_url(opts):
+        """Get the DB url from command-line options
+
+        Args:
+            opts (dict): options dictionary
+        Returns:
+            result (str): URL of database
+        Raises:
+            RuntimeError
+        """
+
+        for item in ['dbhost', 'dbname', 'dbpass', 'dbport', 'dbtype',
+                     'dbuser', 'db-url']:
+            if (not opts[item]):
+                opts[item] = os.environ.get(item.upper().replace('-', '_'),
+                                            Constants.OPTS_DEFAULTS[item])
+        if (opts['dbtype'] == 'sqlite'):
+            return ('sqlite:////%(path)s/%(database)s' % {
+                'path': Constants.DBFILE_PATH,
+                'database': opts['dbname']
+            })
+        else:
+            if (opts['db-url']):
+                return opts['db-url']
+            else:
+                pw = opts['dbpass']
+                if (not pw and os.path.isfile(Constants.DBPASS_FILE)):
+                    pw = open(Constants.DBPASS_FILE, 'r').read()
+                if (not pw):
+                    raise RuntimeError('Database password is not set')
+                return ('%(dbtype)s://%(user)s:%(password)s@'
+                        '%(endpoint)s/%(database)s' % {
+                            'dbtype': opts['dbtype'],
+                            'user': opts['dbuser'],
+                            'password': pw,
+                            'endpoint': '%s:%d' % (opts['dbhost'],
+                                                   int(opts['dbport'])),
+                            'database': opts['dbname']
+                        })
+
+    def set_opts(self, cli_opts, db_session, hostname):
+        """Read additional options from ConfigTable in database, apply
+        precedence rules (there are limitations due to issue cited at
+        https://github.com/docopt/docopt/issues/341).
+
+        Args:
+            cli_opts (dict): options set on CLI by docopt
+            db_session (object): database session
+            hostname (str): hostname key for config table lookup
+        Returns:
+            result (dict): options values after order of precedence
+        Raises:
+            ValueError
+        """
+
+        try:
+            opts = self.get_config_from_db(db_session, hostname)
+            self.validate_configs(opts, Constants.DBOPTS_ALLOW)
+        except ValueError as ex:
+            sys.exit('ERROR: DB configuration %s' % ex.message)
+        except (sqlalchemy.exc.OperationalError,
+                sqlalchemy.exc.ProgrammingError) as ex:
+            Syslog.logger.warn('DB config message=%s' % ex.message)
+            opts = {}
+        for key, value in cli_opts.items():
+            if (key not in opts):
+                opts[key] = value
+        for key, value in Constants.OPTS_DEFAULTS.items():
+            if (opts[key] is None):
+                opts[key] = value
+        try:
+            self.validate_configs(opts, cli_opts.keys())
+        except ValueError as ex:
+            sys.exit('ERROR: %s' % ex.message)
+
+        if (opts['autoverify'].lower() in ['false', 'no', 'off']):
+            Config.autoverify = False
+        elif (opts['autoverify'].lower() in ['true', 'yes', 'on']):
+            Config.autoverify = True
+        Config.hashtype = opts['hashtype']
+        Config.rsnapshot_conf = opts['rsnapshot-conf']
+        Config.sequence = opts['sequence'].split(',')
+        Config.snapshot_root = Constants.SNAPSHOT_ROOT
+        return opts
+
+    def validate_configs(self, opts, valid_choices):
+        """Validate configuration settings; jsonschema would be
+        tidier--but overkill.
+
+        Args:
+            opts (dict): options dictionary
+            valid_choices (list): list of valid keywords
+        Raises:
+            ValueError if any setting's keyword or value is incorrect
+        """
+
+        for keyword, value in opts.items():
+            if (keyword == 'format'):
+                if (value not in ['json', 'text']):
+                    raise ValueError(
+                        'format=%s not json or text' % value)
+            elif (keyword == 'hashtype'):
+                if (value not in ['md5', 'sha256', 'sha512']):
+                    raise ValueError(
+                        'hashtype=%s not md5, sha256 or sha512' % value)
+            elif (keyword == 'autoverify'):
+                if (value not in ['false', 'no', 'off', 'true', 'yes', 'on']):
+                    raise ValueError(
+                        'autoverify=% invalid boolean value' % value)
+
+            if (keyword not in valid_choices):
+                raise ValueError(
+                    'keyword=%s unrecognized option setting' % keyword)
+
+    @staticmethod
+    def docopt_convert(opts):
+        """Convert from dash-dash keyword to just keyword
+
+        Args:
+            opts (dict): options dictionary
+        Returns:
+            result (dict):  command-line options dict, with updated keys
+        """
+
+        return {key.strip('-'): value for (key, value) in opts.items()}
+
+    def rsnapshot_cfg(self):
         """Parse the rsnapshot config file into a dictionary
         Keywords in this config file can have up to two parameters;
         for those which allow multiple statements of the same keyword,
         return a 2-level sub-dictionary or a single-level list
 
-        Args:
-            filename (str): name of config file
         Returns:
             dict:  parsed contents
         Raises:
@@ -35,7 +190,7 @@ class ReadConfig(object):
         self.rsnap_multiple = ['backup', 'backup_script', 'exclude',
                                'include', 'include_conf', 'interval',
                                'retain']
-        self.rsnap_filename = filename
+        filename = Config.rsnapshot_conf
 
         contents = {}
         fp = open(filename, 'r')
@@ -67,62 +222,3 @@ class ReadConfig(object):
             linenum += 1
         fp.close()
         return contents
-
-    @staticmethod
-    def docopt_convert(opts):
-        """Convert from dash-dash keyword to just keyword
-
-        Args:
-            opts (dict): options dictionary
-        Returns:
-            result (dict):  command-line options dict, with updated keys
-        """
-
-        return {key.strip('-'): value for (key, value) in opts.items()}
-
-    def get_config_from_db(self, db_session, hostname):
-        """Read host-specific from config table
-
-        Args:
-            db_session (obj): sqlalchemy session
-        Returns:
-            result (dict):  key/value pairs found in database
-        """
-
-        result = {}
-        for record in db_session.query(ConfigTable).join(
-                ConfigTable.host).filter(Host.hostname == hostname):
-            if (record.keyword == 'host'):
-                result[record.keyword] = record.value.split(',')
-            else:
-                result[record.keyword] = record.value
-        return result
-
-    def validate_configs(self, opts, valid_choices):
-        """Validate configuration settings; jsonschema would be
-        tidier--but overkill.
-
-        Args:
-            opts (dict): options dictionary
-            valid_choices (list): list of valid keywords
-        Raises:
-            ValueError if any setting's keyword or value is incorrect
-        """
-
-        for keyword, value in opts.items():
-            if (keyword == 'format'):
-                if (value not in ['json', 'text']):
-                    raise ValueError(
-                        'format=%s not json or text' % value)
-            elif (keyword == 'hashtype'):
-                if (value not in ['md5', 'sha256', 'sha512']):
-                    raise ValueError(
-                        'hashtype=%s not md5, sha256 or sha512' % value)
-            elif (keyword == 'autoverify'):
-                if (value not in ['false', 'no', 'off', 'true', 'yes', 'on']):
-                    raise ValueError(
-                        'autoverify=% invalid boolean value' % value)
-
-            if (keyword not in valid_choices):
-                raise ValueError(
-                    'keyword=%s unrecognized option setting' % keyword)

@@ -4,8 +4,9 @@ import os
 from sqlalchemy import engine_from_config, pool
 from logging.config import fileConfig
 
-# for autogenerate, uncomment and set PYTHONPATH to the models.py path and set
-# target_metadata as below
+# for secondshot autogenerate, uncomment here in two places and:
+#  cd secondshot
+#  PYTHONPATH=. alembic revision --autogenerate -m "comment"
 
 # uncomment# import models
 

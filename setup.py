@@ -36,6 +36,7 @@ setuptools.setup(
     description='Linux-based backup utility',
     long_description=__long_desc__,
     long_description_content_type='text/markdown',
+    keywords='backup rsync rsnapshot',
     author='Rich Braun',
     author_email='richb@instantlinux.net',
     url='https://github.com/instantlinux/secondshot',

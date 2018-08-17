@@ -15,7 +15,11 @@ import sys
 
 
 class Syslog(object):
+    global logger
+
     def __init__(self, opts):
+        global logger
+
         self.prog = os.path.basename(__file__).split('.')[0]
         self.logger = logging.getLogger()
         self.log_facility = 'local1'
@@ -32,6 +36,7 @@ class Syslog(object):
         else:
             self.syslog_enable = False
         self.logfile = opts['logfile']
+        logger = self
 
     def debug(self, msg):
         if (self.log_level == logging.DEBUG):
@@ -63,8 +68,11 @@ class Syslog(object):
         with open(self.logfile, 'a') as f:
             f.write(self._date_prefix('W', msg))
 
-    @staticmethod
-    def _date_prefix(severity, msg):
+    def _date_prefix(self, severity, msg):
         return '[%s] %s %s\n' % (
-            datetime.datetime.now().strftime('%d/%b/%Y-%H:%M:%S'),
+            self._now().strftime('%d/%b/%Y-%H:%M:%S'),
             severity, msg)
+
+    @staticmethod
+    def _now():
+        return datetime.datetime.now()

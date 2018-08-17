@@ -9,7 +9,7 @@ license: lgpl-2.1
 
 # coding: utf-8
 from sqlalchemy import BIGINT, BOOLEAN, Column, Enum, Float, ForeignKey, \
-     INTEGER, Index, String, TIMESTAMP, text, VARBINARY
+     ForeignKeyConstraint, INTEGER, Index, String, TIMESTAMP, text, VARBINARY
 from sqlalchemy import func
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -22,6 +22,7 @@ class ConfigTable(Base):
     __tablename__ = 'config'
     __table_args__ = (
         Index('index1', 'keyword', 'host_id', unique=True),
+        ForeignKeyConstraint(['host_id'], ['hosts.id']),
     )
 
     id = Column(INTEGER, primary_key=True, unique=True,
@@ -48,6 +49,7 @@ class File(Base):
     __table_args__ = (
         Index('index3', 'filename', 'path', 'host_id', 'mode', 'size', 'mtime',
               'uid', 'gid', unique=True),
+        ForeignKeyConstraint(['host_id'], ['hosts.id']),
     )
 
     id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
@@ -77,6 +79,10 @@ class File(Base):
 
 class Saveset(Base):
     __tablename__ = 'savesets'
+    __table_args__ = (
+        ForeignKeyConstraint(['backup_host_id'], ['hosts.id']),
+        ForeignKeyConstraint(['host_id'], ['hosts.id']),
+    )
 
     id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
                 autoincrement=True)
@@ -100,6 +106,9 @@ class Saveset(Base):
 
 class Volume(Base):
     __tablename__ = 'volumes'
+    __table_args__ = (
+        ForeignKeyConstraint(['host_id'], ['hosts.id']),
+    )
 
     id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
                 autoincrement=True)
@@ -119,6 +128,11 @@ class Volume(Base):
 
 class Backup(Base):
     __tablename__ = 'backups'
+    __table_args__ = (
+        ForeignKeyConstraint(['file_id'], ['files.id']),
+        ForeignKeyConstraint(['volume_id'], ['volumes.id']),
+        ForeignKeyConstraint(['saveset_id'], ['savesets.id']),
+    )
 
     id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
                 autoincrement=True)
@@ -137,3 +151,9 @@ class Backup(Base):
     file = relationship('File')
     saveset = relationship('Saveset', cascade='all,delete')
     volume = relationship('Volume')
+
+
+class AlembicVersion(Base):
+    __tablename__ = 'alembic_version'
+
+    version_num = Column(String(32), primary_key=True, nullable=False)
