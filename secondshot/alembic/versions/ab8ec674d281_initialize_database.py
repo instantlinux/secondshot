@@ -30,7 +30,7 @@ def upgrade():
     op.create_table(
         'files',
         sa.Column('id', sa.INTEGER(), autoincrement=True, nullable=False),
-        sa.Column('path', sa.String(length=255), nullable=False),
+        sa.Column('path', sa.String(length=1023), nullable=False),
         sa.Column('filename', sa.String(length=255), nullable=False),
         sa.Column('owner', sa.String(length=48), nullable=True),
         sa.Column('grp', sa.String(length=48), nullable=True),

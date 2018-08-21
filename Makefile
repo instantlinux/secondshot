@@ -29,7 +29,7 @@ python_env: $(VDIR)/bin/python
 test_requirements: python_env
 	@echo "Installing test requirements"
 	(. $(VDIR)/bin/activate && \
-	 pip install -r etc/requirements-test.txt)
+	 pip install -r tests/requirements.txt)
 
 $(VDIR)/bin/python:
 	@echo "Creating virtual environment"

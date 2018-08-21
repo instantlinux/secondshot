@@ -7,8 +7,14 @@ node('swarm') {
     def coberturaPublish = [
         $class: 'CoberturaPublisher', autoUpdateHealth: false,
         autoUpdateStability: false, coberturaReportFile: '**/coverage.xml',
-        failUnhealthy: false, failUnstable: false, maxNumberOfBuilds: 0,
+        failUnhealthy: true, failUnstable: false,
+        lineCoverageTargets: '95, 90, 80', maxNumberOfBuilds: 0,
         onlyStable: false, sourceEncoding: 'UTF_8', zoomCoverageChart: false]
+    def coverageOpts = [
+        allowMissing: true, alwaysLinkToLastBuild: false, keepAll: true,
+        reportDir: '**/htmlcov', reportFiles: 'index.html',
+        reportName: 'Pytest Coverage']
+    def imageTag = null
     def localCACreds = file(
         credentialsId: 'local-root-ca', variable: 'SSL_CHAIN')
     def pypiLocalCreds = [$class: 'UsernamePasswordMultiBinding',
@@ -29,6 +35,7 @@ node('swarm') {
             sh 'make test'
             junit '**/*.xml'
             step(coberturaPublish)
+            publishHTML target: coverageOpts
         }
         stage('Publish Package') {
             withCredentials([pypiLocalCreds, localCACreds]) {
@@ -67,7 +74,9 @@ node('swarm') {
             attachLog: true
         )
         stage('Clean') {
-            sh "docker rmi ${registry}/${service}:${imageTag}"
+            if (imageTag) {
+                sh "docker rmi ${registry}/${service}:${imageTag}"
+            }
             deleteDir()
         }
     }

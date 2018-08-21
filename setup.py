@@ -13,16 +13,10 @@ class PyTest(TestCommand):
     def finalize_options(self):
         TestCommand.finalize_options(self)
         self.test_args = [
-            '--junitxml',
-            'tests/test-result.xml',
-            '--cov-report',
-            'term-missing',
-            '--cov-report',
-            'html',
-            '--cov-report',
-            'xml',
-            '--cov',
-            'app']
+            '--junitxml', 'tests/test-result.xml',
+            '--cov-report', 'term-missing',
+            '--cov-report', 'html',
+            '--cov-report', 'xml']
         self.test_suite = True
 
     def run_tests(self):

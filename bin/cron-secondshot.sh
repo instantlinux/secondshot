@@ -19,7 +19,7 @@ secondshot --action=start $VOLUME $HOSTS
 secondshot --action=rotate --interval=hourly
 if [ $HOUR -le 02 ]; then
   secondshot --action=rotate --interval=daysago
-  [ $WEEKDAY == 0 ] && rsnap-rotate.sh --interval=weeksago
+  [ $WEEKDAY == 0 ] && secondshot --action=rotate --interval=weeksago
   if [ $DAY -eq 1 ]; then
     secondshot --action=rotate --interval=monthsago
     [ $MONTH -eq 9 ] || [ $MONTH -eq 3 ] && secondshot --action=rotate --interval=semiannually

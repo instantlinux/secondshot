@@ -42,13 +42,18 @@ else:
 
 class Actions(object):
 
-    def __init__(self, opts):
+    def __init__(self, opts, db_engine=None, db_session=None):
         """Initialize database session"""
 
-        self.db_url = Config.get_db_url(opts)
-        self.engine = create_engine(self.db_url)
-        self.session = sqlalchemy.orm.scoped_session(
-            sqlalchemy.orm.sessionmaker(autocommit=False, bind=self.engine))
+        if (db_session):
+            self.engine = db_engine
+            self.session = db_session
+        else:
+            self.db_url = Config.get_db_url(opts)
+            self.engine = create_engine(self.db_url)
+            self.session = sqlalchemy.orm.scoped_session(
+                sqlalchemy.orm.sessionmaker(autocommit=False,
+                                            bind=self.engine))
         self.set_options(opts)
 
     def set_options(self, cli_opts):
@@ -197,7 +202,7 @@ class Actions(object):
                     ctime=datetime.datetime.fromtimestamp(
                         stat.st_ctime).strftime(self.time_fmt),
                     gid=stat.st_gid,
-                    last_backup=datetime.datetime.now().strftime(
+                    last_backup=Syslog._now().strftime(
                         '%Y-%m-%d %H:%M:%S'),
                     links=stat.st_nlink,
                     mode=stat.st_mode,
@@ -219,21 +224,40 @@ class Actions(object):
                     try:
                         # Bypass sqlalchemy for ON DUPLICATE KEY UPDATE and
                         # LAST_INSERT_ID functionality
-                        self.session.execute(
-                            u"INSERT INTO files (%(columns)s)"
-                            u" VALUES('%(values)s')"
-                            u" ON DUPLICATE KEY UPDATE owner='%(owner)s',"
-                            u"grp='%(group)s',id=LAST_INSERT_ID(id),"
-                            u"last_backup=NOW();" % dict(
-                                columns=','.join(record.keys()),
-                                values="','".join(str(item) for item
-                                                  in record.values()),
-                                owner=owner, group=group))
-                        self.session.execute(
-                            "INSERT INTO backups (saveset_id,volume_id,file_id"
-                            ") VALUES(%(saveset_id)d,%(volume_id)d,"
-                            "LAST_INSERT_ID());" %
-                            dict(saveset_id=saveset.id, volume_id=vol.id))
+                        if (self.engine.name == 'sqlite'):
+                            # sqlite lacks UPSERT capability, but this is
+                            # good enough for exisiting unit-test. TODO: fix
+                            #  this so we don't require a 'real' SQL.
+                            sql_insert1 = (
+                                u"INSERT OR IGNORE INTO files (%(columns)s)"
+                                u" VALUES('%(values)s');" % dict(
+                                    columns=','.join(record.keys()),
+                                    values="','".join(str(item) for item
+                                                      in record.values()),
+                                    owner=owner, group=group))
+                            sql_insert2 = (
+                                "INSERT INTO backups (saveset_id,volume_id,"
+                                "file_id) VALUES(%(saveset_id)d,%(volume_id)d,"
+                                "LAST_INSERT_ROWID());" %
+                                dict(saveset_id=saveset.id, volume_id=vol.id))
+                        else:
+                            sql_insert1 = (
+                                u"INSERT INTO files (%(columns)s)"
+                                u" VALUES('%(values)s')"
+                                u" ON DUPLICATE KEY UPDATE owner='%(owner)s',"
+                                u"grp='%(group)s',id=LAST_INSERT_ID(id),"
+                                u"last_backup=NOW();" % dict(
+                                    columns=','.join(record.keys()),
+                                    values="','".join(str(item) for item
+                                                      in record.values()),
+                                    owner=owner, group=group))
+                            sql_insert2 = (
+                                "INSERT INTO backups (saveset_id,volume_id,"
+                                "file_id) VALUES(%(saveset_id)d,%(volume_id)d,"
+                                "LAST_INSERT_ID());" %
+                                dict(saveset_id=saveset.id, volume_id=vol.id))
+                        self.session.execute(sql_insert1)
+                        self.session.execute(sql_insert2)
                         break
                     except sqlalchemy.exc.OperationalError as ex:
                         Syslog.logger.warn('action=inject path=%s filename=%s '
@@ -298,7 +322,7 @@ class Actions(object):
             sys.exit(msg)
 
         # figure out oldest item in previous interval
-        if (interval in ['hourly', 'main']):
+        if (interval in ['hourly', 'main', 'short']):
             prev = Constants.SYNC_PATH
         elif (interval in Config.sequence):
             prev = Config.sequence[Config.sequence.index(interval) - 1]
@@ -312,6 +336,7 @@ class Actions(object):
             backup_host_id=host_record.id).delete()
         if (count > 0):
             results.append(dict(
+                action='delete',
                 host=self.backup_host,
                 location='%s.%d' % (interval, interval_max - 1),
                 savesets=count))
@@ -320,11 +345,18 @@ class Actions(object):
                 (self.backup_host, interval, interval_max - 1, count))
 
         # move all savesets location <interval>.<n> => <n+1>
-        self.session.execute(
-            "UPDATE savesets SET location=CONCAT('%(interval)s','.',"
-            "SUBSTR(location,locate('.',location)+1)+1) WHERE "
-            "location LIKE '%(interval)s%%' AND backup_host_id=%(host)d" % {
-                'interval': interval, 'host': host_record.id})
+        if (self.engine.name == 'sqlite'):
+            self.session.execute(
+                "UPDATE savesets SET location='%(interval)s'||'.'||"
+                "(SUBSTR(location,INSTR(location,'.')+1)+1) WHERE location "
+                "LIKE '%(interval)s%%' AND backup_host_id=%(host)d" % {
+                    'interval': interval, 'host': host_record.id})
+        else:
+            self.session.execute(
+                "UPDATE savesets SET location=CONCAT('%(interval)s','.',"
+                "SUBSTR(location,INSTR(location,'.')+1)+1) WHERE location "
+                "LIKE '%(interval)s%%' AND backup_host_id=%(host)d" % {
+                    'interval': interval, 'host': host_record.id})
 
         # move saveset location=<previous int> to <interval>.0
         count = self.session.query(Saveset).filter(
@@ -342,7 +374,8 @@ class Actions(object):
                                'location=%s.0 prev=%s' %
                                (self.backup_host, count, interval, prev))
         self.session.commit()
-        return {'rotate': dict(status='ok', actions=results)}
+        return {'rotate': dict(status='ok' if results else 'error',
+                               actions=results)}
 
     def start(self, hosts, volume):
         """Start a backup for each of the specified hosts; if
@@ -423,7 +456,7 @@ class Actions(object):
             saveset='%(host)s-%(volume)s-%(date)s' % dict(
                 host=host,
                 volume=volume,
-                date=datetime.datetime.now().strftime('%Y%m%d-%H')),
+                date=Syslog._now().strftime('%Y%m%d-%H')),
             location=Constants.SYNC_PATH,
             host=host_record,
             backup_host=backup_host_record
@@ -536,7 +569,7 @@ class Actions(object):
         cfg = alembic.config.Config()
         cfg.set_main_option('script_location', os.path.join(
             os.path.abspath(os.path.dirname(__file__)), 'alembic'))
-        cfg.set_main_option('url', self.db_url)
+        cfg.set_main_option('url', str(self.engine.url))
         script = alembic.script.ScriptDirectory.from_config(cfg)
         env = EnvironmentContext(cfg, script)
         if (version == script.get_heads()[0]):

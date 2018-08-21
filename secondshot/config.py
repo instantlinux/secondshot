@@ -29,23 +29,63 @@ class Config(object):
     sequence = None
     snapshot_root = Constants.SNAPSHOT_ROOT
 
-    def get_config_from_db(self, db_session, hostname):
-        """Read host-specific from config table
+    def init_db_get_config(self, db_session, hostname):
+        """Initialize db session and read host-specific entries from
+        config table
 
         Args:
             db_session (obj): sqlalchemy session
+            hostname (str): fetch only these host-specific settings
         Returns:
             result (dict):  key/value pairs found in database
         """
 
+        self.session = db_session
+        self.hostname = hostname
         result = {}
-        for record in db_session.query(ConfigTable).join(
+        for record in self.session.query(ConfigTable).join(
                 ConfigTable.host).filter(Host.hostname == hostname):
             if (record.keyword == 'host'):
                 result[record.keyword] = record.value.split(',')
             else:
                 result[record.keyword] = record.value
         return result
+
+    def db_set(self, keyword, value):
+        """Update a config setting
+
+        Args:
+            keyword: Config key
+            value: New value
+        """
+        try:
+            record = self.session.query(ConfigTable).join(
+                ConfigTable.host).filter(
+                    ConfigTable.keyword == keyword,
+                    Host.hostname == self.hostname).one()
+            record.value = value
+        except sqlalchemy.orm.exc.NoResultFound:
+            host = self.session.query(Host).filter(
+                Host.hostname == self.hostname).one()
+            record = ConfigTable(keyword=keyword, value=value,
+                                 host=host)
+        self.session.add(record)
+        self.session.commit()
+
+    def db_get(self, keyword):
+        """Fetch a config setting
+
+        Args:
+            keyword: Config key
+        """
+        try:
+            record = self.session.query(ConfigTable).join(
+                ConfigTable.host).filter(
+                    ConfigTable.keyword == keyword,
+                    Host.hostname == self.hostname).one()
+            return record.value
+        except sqlalchemy.orm.exc.NoResultFound:
+            return None
 
     @staticmethod
     def get_db_url(opts):
@@ -65,7 +105,7 @@ class Config(object):
                 opts[item] = os.environ.get(item.upper().replace('-', '_'),
                                             Constants.OPTS_DEFAULTS[item])
         if (opts['dbtype'] == 'sqlite'):
-            return ('sqlite:////%(path)s/%(database)s' % {
+            return ('sqlite:///%(path)s/%(database)s' % {
                 'path': Constants.DBFILE_PATH,
                 'database': opts['dbname']
             })
@@ -104,7 +144,7 @@ class Config(object):
         """
 
         try:
-            opts = self.get_config_from_db(db_session, hostname)
+            opts = self.init_db_get_config(db_session, hostname)
             self.validate_configs(opts, Constants.DBOPTS_ALLOW)
         except ValueError as ex:
             sys.exit('ERROR: DB configuration %s' % ex.message)
@@ -156,7 +196,7 @@ class Config(object):
             elif (keyword == 'autoverify'):
                 if (value not in ['false', 'no', 'off', 'true', 'yes', 'on']):
                     raise ValueError(
-                        'autoverify=% invalid boolean value' % value)
+                        'autoverify=%s invalid boolean value' % value)
 
             if (keyword not in valid_choices):
                 raise ValueError(
