@@ -1,3 +1,12 @@
+"""test_actions
+
+Tests for Actions class
+
+created 25-aug-2018 by richb@instantlinux.net
+
+license: lgpl-2.1
+"""
+
 import binascii
 from datetime import datetime
 import mock
@@ -40,11 +49,9 @@ class TestActions(test_base.TestBase):
                     testdata=self.testdata_path,
                     hostname=self.testhost))
         self.cli.update({
-            'action': 'start', 'logfile': self.logfile_name,
-            'host': [self.testhost], 'sequence': 'short,long,longer',
-            'backup-host': self.testhost, 'filter': '*', 'verbose': True,
+            'action': 'start', 'sequence': 'short,long,longer',
             'rsnapshot-conf': self.rsnapshot_conf,
-            'volume': self.volume})
+            'verbose': True, 'volume': self.volume})
         saveset = Saveset(
             location=Constants.SYNC_PATH, saveset=self.saveset,
             host_id=self.testhost_id,

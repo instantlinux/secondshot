@@ -1,3 +1,12 @@
+"""test_secondshot
+
+Tests for main (docopt cli parser)
+
+created 25-aug-2018 by richb@instantlinux.net
+
+license: lgpl-2.1
+"""
+
 import json
 import mock
 import os

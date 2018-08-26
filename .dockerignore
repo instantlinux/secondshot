@@ -1,5 +1,7 @@
 .git
+*.pyc
 **/htmlcov/
 build/
 dist/
 python_env/
+tests/

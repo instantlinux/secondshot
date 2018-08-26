@@ -10,7 +10,7 @@ Usage:
            [--list-hosts] [--list-savesets] [--list-volumes]
            [--filter=STR] [--format=FORMAT] [--hashtype=ALGORITHM]
            [--rsnapshot-conf=FILE] [--autoverify=BOOL] [--sequence=VALUES]
-           [--volume=VOL] [--log-level=STR] [-v]...
+           [--volume=VOL] [--log-level=STR] [--version] [-v]...
   secondshot --action=start --host=HOST --volume=VOL [--autoverify=BOOL]
            [--log-level=STR] [-v]...
   secondshot --action=rotate --interval=INTERVAL [--logfile=FILE]
@@ -47,6 +47,7 @@ semiannually,yearsago]
   --autoverify=BOOL     Verify each just-created saveset (default: yes)
   --hashtype=ALGORITHM  Hash algorithm md5, sha256, sha512 (default: md5)
   --verify=SAVESET      Verify checksums of stored files
+  --version             Display software version
   --volume=VOLUME       Volume for storing saveset
   -v --verbose          Verbose output
   -h --help             List options
@@ -62,11 +63,13 @@ if (sys.version_info.major == 2):
     from actions import Actions
     from config import Config
     from syslogger import Syslog
+    from _version import __version__
 else:
     # Python 3 requires explicit relative-path syntax
     from .actions import Actions
     from .config import Config
     from .syslogger import Syslog
+    from ._version import __version__
 
 
 def main():
@@ -85,6 +88,8 @@ def main():
         result = obj.list_volumes()
     elif (opts['verify']):
         result = obj.verify(opts['verify'])
+    elif (opts['version']):
+        result = dict(version=[dict(name='secondshot %s' % __version__)])
     elif (opts['action'] == 'start'):
         result = obj.start(obj.hosts, obj.volume)
         status = result['start']['status']
@@ -99,7 +104,7 @@ def main():
     if (opts['format'] == 'json'):
         sys.stdout.write(json.dumps(result) + '\n')
     elif (opts['format'] == 'text' and result and next(iter(result.keys())) in
-          ['hosts', 'savesets', 'schema-update', 'volumes']):
+          ['hosts', 'savesets', 'schema-update', 'version', 'volumes']):
         for item in result[next(iter(result.keys()))]:
             sys.stdout.write(item['name'] + '\n')
     if (status != 'ok'):

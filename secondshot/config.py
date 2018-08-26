@@ -104,14 +104,14 @@ class Config(object):
             if (not opts[item]):
                 opts[item] = os.environ.get(item.upper().replace('-', '_'),
                                             Constants.OPTS_DEFAULTS[item])
-        if (opts['dbtype'] == 'sqlite'):
-            return ('sqlite:///%(path)s/%(database)s' % {
-                'path': Constants.DBFILE_PATH,
-                'database': opts['dbname']
-            })
+        if (opts['db-url']):
+            return opts['db-url']
         else:
-            if (opts['db-url']):
-                return opts['db-url']
+            if (opts['dbtype'] == 'sqlite'):
+                return ('sqlite:///%(path)s/%(database)s' % {
+                    'path': Constants.DBFILE_PATH,
+                    'database': opts['dbname']
+                })
             else:
                 pw = opts['dbpass']
                 if (not pw and os.path.isfile(Constants.DBPASS_FILE)):
@@ -233,7 +233,12 @@ class Config(object):
         filename = Config.rsnapshot_conf
 
         contents = {}
-        fp = open(filename, 'r')
+        try:
+            fp = open(filename, 'r')
+        except IOError as ex:
+            Syslog.logger.warn('Cannot read rsnapshot_conf=%s, message=%s'
+                               % (filename, str(ex)))
+            return contents
         linenum = 1
         for line in fp:
             if '#' in line:

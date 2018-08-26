@@ -17,8 +17,8 @@ services:
     volumes:
     - backups:/backups
     - metadata:/metadata
-    - $ADMIN_PATH/secondshot/etc:/etc/secondshot/conf.d:ro
-    - $ADMIN_PATH/secondshot/ssh/id_rsa.pub:/home/secondshot/.ssh/id_rsa.pub:ro
+    - ${ADMIN_PATH:-/opt}/secondshot/etc:/etc/secondshot/conf.d:ro
+    - ${ADMIN_PATH:-/opt}/secondshot/ssh/id_rsa.pub:/home/secondshot/.ssh/id_rsa.pub:ro
     # list of volumes to back up, customize as needed
     - dovecot_inbox:/backup/inbox:ro
     - dovecot_webmail:/backup/webmail:ro

@@ -1,3 +1,12 @@
+"""test_config
+
+Tests for Config class
+
+created 25-aug-2018 by richb@instantlinux.net
+
+license: lgpl-2.1
+"""
+
 import os.path
 import shutil
 import tempfile

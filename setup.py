@@ -3,8 +3,8 @@ import os.path
 import setuptools
 from setuptools.command.test import test as TestCommand
 
-__version__ = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                'VERSION')).read()
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       'VERSION')).read())
 __long_desc__ = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      'README.md'), encoding='utf-8').read()
 

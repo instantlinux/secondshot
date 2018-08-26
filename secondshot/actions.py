@@ -83,8 +83,10 @@ class Actions(object):
                 'snapshot_root'].rstrip('/')
         if ('retain' in self.rsnapshot_cfg):
             self.intervals = self.rsnapshot_cfg['retain']
-        else:
+        elif ('interval' in self.rsnapshot_cfg):
             self.intervals = self.rsnapshot_cfg['interval']
+        else:
+            self.intervals = Config.sequence
 
     def calc_sums(self, saveset_id):
         """Calculate checksums for any files that haven't already been stored
@@ -578,7 +580,6 @@ class Actions(object):
             results.append(dict(name=version, action='skipped'))
         else:
             def _do_upgrade(revision, context):
-                results.append(dict(name=str(revision), action='migrated'))
                 return script._upgrade_revs(script.get_heads(), revision)
 
             conn = self.engine.connect()
@@ -586,9 +587,12 @@ class Actions(object):
                           fn=_do_upgrade)
             with env.begin_transaction():
                 env.run_migrations()
+            results.append(dict(name=script.get_heads()[0], action='migrated'))
             Syslog.logger.info('action=schema-update finished migration, '
                                'version=%s' % script.get_heads()[0])
             if (version is None):
+                # Seed a new db with host and volume records
+
                 record = Host(hostname=self.backup_host)
                 self.session.add(record)
                 self.session.flush()

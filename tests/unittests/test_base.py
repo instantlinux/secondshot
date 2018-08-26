@@ -25,7 +25,6 @@ class TestBase(unittest2.TestCase):
         an in-memory sqlite instance with host/volume records
         and a couple of config entries."""
 
-        self.cli = Constants.OPTS_DEFAULTS.copy()
         self.logfile_name = tempfile.mkstemp(prefix='_test')[1]
         self.testhost = 'test'
 
@@ -53,6 +52,15 @@ class TestBase(unittest2.TestCase):
         self.volume_id = volume.id
         self.config = Config()
         self.config.init_db_get_config(self.session, self.testhost)
+
+        self.cli = Constants.OPTS_DEFAULTS.copy()
+        self.cli.update({
+            'backup-host': self.testhost, 'host': [self.testhost],
+            'db-url': None, 'filter': '*',
+            'log-level': 'none', 'logfile': self.logfile_name,
+            'sequence': 'default: hourly,daysago,weeksago,monthsago,\
+semiannually,yearsago',
+            'verbose': None, 'volume': Constants.DEFAULT_VOLUME})
 
     def tearDown(self):
         os.remove(self.logfile_name)
