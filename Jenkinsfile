@@ -8,7 +8,7 @@ node('swarm') {
         $class: 'CoberturaPublisher', autoUpdateHealth: false,
         autoUpdateStability: false, coberturaReportFile: '**/coverage.xml',
         failUnhealthy: true, failUnstable: false,
-        lineCoverageTargets: '95, 90, 80', maxNumberOfBuilds: 0,
+        lineCoverageTargets: '74, 70, 60', maxNumberOfBuilds: 0,
         onlyStable: false, sourceEncoding: 'UTF_8', zoomCoverageChart: false]
     def coverageOpts = [
         allowMissing: true, alwaysLinkToLastBuild: false, keepAll: true,
