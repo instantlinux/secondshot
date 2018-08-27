@@ -3,10 +3,10 @@ import os.path
 import setuptools
 from setuptools.command.test import test as TestCommand
 
-exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       'VERSION')).read())
-__long_desc__ = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                     'README.md'), encoding='utf-8').read()
+from secondshot._version import __version__
+
+__long_desc__ = io.open(os.path.join(os.path.dirname(
+    os.path.abspath(__file__)), 'README.md'), encoding='utf-8').read()
 
 
 class PyTest(TestCommand):
