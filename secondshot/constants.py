@@ -14,7 +14,7 @@ class Constants(object):
     DBOPTS_ALLOW = ['autoverify', 'hashtype', 'host', 'rsnapshot-conf',
                     'volume']
     DEFAULT_VOLUME = 'backup'
-    MAX_INSERT = 5000
+    MAX_INSERT = 2000
     OPTS_DEFAULTS = {
         'autoverify': 'yes',
         'dbhost': 'db00',

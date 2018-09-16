@@ -147,10 +147,10 @@ class Config(object):
             opts = self.init_db_get_config(db_session, hostname)
             self.validate_configs(opts, Constants.DBOPTS_ALLOW)
         except ValueError as ex:
-            sys.exit('ERROR: DB configuration %s' % ex.message)
+            sys.exit('ERROR: DB configuration %s' % str(ex))
         except (sqlalchemy.exc.OperationalError,
                 sqlalchemy.exc.ProgrammingError) as ex:
-            Syslog.logger.warn('DB config message=%s' % ex.message)
+            Syslog.logger.warn('DB config message=%s' % str(ex))
             opts = {}
         for key, value in cli_opts.items():
             if (key not in opts):
@@ -161,7 +161,7 @@ class Config(object):
         try:
             self.validate_configs(opts, cli_opts.keys())
         except ValueError as ex:
-            sys.exit('ERROR: %s' % ex.message)
+            sys.exit('ERROR: %s' % str(ex))
 
         if (opts['autoverify'].lower() in ['false', 'no', 'off']):
             Config.autoverify = False

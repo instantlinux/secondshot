@@ -154,7 +154,7 @@ class TestConfig(test_base.TestBase):
             'hashtype': 'md5',
             'host': ['test', 'cnn', 'fox'],
             'logfile': '/var/log/test',
-            'rsnapshot-conf': '/etc/backup-daily.conf',
+            'rsnapshot-conf': Constants.OPTS_DEFAULTS['rsnapshot-conf'],
             'sequence': 'default'}
 
         cli = Constants.OPTS_DEFAULTS.copy()

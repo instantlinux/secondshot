@@ -39,8 +39,8 @@ pytest: test_requirements
 	@echo "Running pytest unit tests"
 	cd secondshot && \
 	export PYTHONPATH=. && \
-	(. $(VDIR)/bin/activate ; \
-	py.test $(XARGS) ../tests/unittests/ \
+	(. $(VDIR)/bin/activate && \
+	 py.test $(XARGS) ../tests/unittests/ \
 	 --junitxml=../tests/unittests/results.xml \
 	 --cov-report html \
 	 --cov-report xml \
@@ -63,7 +63,7 @@ bin/rrsync:
 
 clean:
 	rm -rf build dist bin/rrsync secondshot/htmlcov *.egg-info \
-	 tests/unittests/__pycache__
+	 .cache .pytest_cache tests/unittests/__pycache__
 	find . -regextype egrep -regex '.*(coverage.xml|results.xml|\.pyc|~)' \
 	 -exec rm -rf {} \;
 wipe_clean: clean

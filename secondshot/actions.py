@@ -110,7 +110,7 @@ class Actions(object):
             saveset = self.session.query(Saveset).filter_by(
                 id=saveset_id).one().saveset
         except Exception as ex:
-            Syslog.logger.warn('action=calc_sums msg=%s' % ex.message)
+            Syslog.logger.warn('action=calc_sums msg=%s' % str(ex))
         if (not host or not location):
             sys.exit('action=calc_sums msg=missing host/location')
         total = self.session.query(sqlalchemy.sql.func.sum(
@@ -132,7 +132,7 @@ class Actions(object):
                 bytes += file.file.size
             except Exception as ex:
                 Syslog.logger.warn('action=calc_sums id=%d msg=skipped '
-                                   'error=%s' % (file.file.id, ex.message))
+                                   'error=%s' % (file.file.id, str(ex)))
             if (count % 1000 == 0):
                 Syslog.logger.debug('action=calc_sums count=%d bytes=%d' %
                                     (count, bytes))
@@ -164,7 +164,7 @@ class Actions(object):
             saveset = self.session.query(Saveset).filter_by(
                 id=saveset_id).one()
         except Exception as ex:
-            sys.exit('action=inject Invalid host or volume: %s' % ex.message)
+            sys.exit('action=inject Invalid host or volume: %s' % str(ex))
 
         (count, skipped) = (0, 0)
         for dirpath, _, filenames in os.walk(pathname):
@@ -180,19 +180,19 @@ class Actions(object):
                     if ex.errno != 2:
                         Syslog.logger.error(
                             'action=inject filename=%s message=%s' %
-                            (filename, ex.message))
+                            (filename, str(ex)))
                         raise
                     skipped += 1
                     Syslog.logger.debug('action=inject path=%s filename=%s '
                                         'msg=%s' %
-                                        (dirpath, filename, ex.message))
+                                        (dirpath, filename, str(ex)))
                     continue
                 except UnicodeDecodeError as ex:
                     msg = 'action=inject inode=inode=%d dev=%s' % (
                         stat.st_ino, stat.st_dev)
                     try:
                         msg += ' path=%s filename=%s msg=%s' % (
-                            dirpath, filename, ex.message)
+                            dirpath, filename, str(ex))
                     except Exception:
                         pass
                     skipped += 1
@@ -264,15 +264,15 @@ class Actions(object):
                     except sqlalchemy.exc.OperationalError as ex:
                         Syslog.logger.warn('action=inject path=%s filename=%s '
                                            'msg=%s' %
-                                           (_path, _filename, ex.message))
-                        if ('Deadlock found' in ex.message):
+                                           (_path, _filename, str(ex)))
+                        if ('Deadlock found' in str(ex)):
                             time.sleep((retry + 1) * 10)
                         else:
                             time.sleep(1)
                     except Exception as ex:
                         Syslog.logger.warn('action=inject path=%s filename=%s '
                                            'msg=%s' %
-                                           (_path, _filename, ex.message))
+                                           (_path, _filename, str(ex)))
                         time.sleep(1)
                         raise
                     if (retry == 4):
@@ -315,7 +315,7 @@ class Actions(object):
             ret = subprocess.call(['rsnapshot', '-c',
                                    Config.rsnapshot_conf, interval])
         except Exception as ex:
-            msg = 'action=rotate subprocess error=%s' % ex.message
+            msg = 'action=rotate subprocess error=%s' % str(ex)
             Syslog.logger.error(msg)
             sys.exit(msg)
         if (ret != 0):
@@ -400,7 +400,7 @@ class Actions(object):
                 saveset_id = new_saveset['id']
             except sqlalchemy.exc.IntegrityError as ex:
                 Syslog.logger.error('action=start database error=%s'
-                                    % ex.message)
+                                    % str(ex))
                 status = 'error'
                 continue
             try:
@@ -408,7 +408,7 @@ class Actions(object):
                                        Config.rsnapshot_conf, 'sync', host])
             except Exception as ex:
                 Syslog.logger.error('action=start subprocess error=%s'
-                                    % ex.message)
+                                    % str(ex))
                 status = 'error'
                 continue
             if (ret != 0):
@@ -467,7 +467,7 @@ class Actions(object):
             self.session.add(saveset)
             self.session.commit()
         except sqlalchemy.exc.IntegrityError as ex:
-            if ('Duplicate entry' in ex.message):
+            if ('Duplicate entry' in str(ex)):
                 sys.exit('ERROR: duplicate saveset=%s' % saveset.saveset)
         Syslog.logger.info('START saveset=%s' % saveset.saveset)
         return dict(id=saveset.id, saveset=saveset.saveset)
@@ -566,7 +566,7 @@ class Actions(object):
         except (sqlalchemy.orm.exc.NoResultFound,
                 sqlalchemy.exc.OperationalError,
                 sqlalchemy.exc.ProgrammingError) as ex:
-            Syslog.logger.warn('DB schema does not yet exist: %s' % ex.message)
+            Syslog.logger.warn('DB schema does not yet exist: %s' % str(ex))
             version = None
         cfg = alembic.config.Config()
         cfg.set_main_option('script_location', os.path.join(
@@ -696,11 +696,11 @@ class Actions(object):
             return 'd'
         elif (stat.S_ISREG(mode)):
             return 'f'
-        elif (stat.S_ISLNK):
+        elif (stat.S_ISLNK(mode)):
             return 'l'
-        elif (stat.S_ISFIFO):
-            return 'p'
-        elif (stat.S_ISSOCK):
+        elif (stat.S_ISSOCK(mode)):
             return 's'
+        elif (stat.S_ISFIFO(mode)):
+            return 'p'
         else:
             raise RuntimeError('Unexpected file mode %d' % mode)

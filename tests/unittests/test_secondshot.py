@@ -15,6 +15,7 @@ import tempfile
 
 import test_base
 from secondshot import main
+from _version import __version__
 
 
 class TestMain(test_base.TestBase):
@@ -122,6 +123,14 @@ class TestMain(test_base.TestBase):
         mock_volumes.assert_called_once_with()
         mock_verify.assert_called_once_with(['test'])
         mock_rotate.assert_called_once_with('short')
+
+    @mock.patch('sys.stdout.write')
+    def test_version(self, mock_stdout):
+        sys.argv = ['secondshot', '--version',
+                    '--logfile=%s' % self.logfile_name]
+        main()
+        mock_stdout.assert_called_once_with(
+            'secondshot %s\n' % __version__)
 
     @mock.patch('actions.Actions.schema_update')
     def test_schema_update(self, mock_schema_update):

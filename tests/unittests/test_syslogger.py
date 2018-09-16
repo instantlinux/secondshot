@@ -11,12 +11,12 @@ from datetime import datetime
 import mock
 import os
 import tempfile
-import unittest2
+import unittest
 
 from secondshot import Syslog
 
 
-class TestSyslog(unittest2.TestCase):
+class TestSyslog(unittest.TestCase):
 
     @mock.patch('syslogger.Syslog._now')
     def test_data_prefix(self, mock_now):
@@ -34,7 +34,8 @@ class TestSyslog(unittest2.TestCase):
                 'verbose': None})
         Syslog.logger.warn('test')
         mock_stderr.assert_called_once_with('WARN: test\n')
-        # mock_logger.assert_called_once_with('syslogger test')
+        # TODO: not yet working in pipeline
+        # mock_logger.assert_called_once_with('secondshot test')
         os.remove(logfile_name)
 
     @mock.patch('sys.stderr.write')
@@ -45,7 +46,8 @@ class TestSyslog(unittest2.TestCase):
                 'verbose': None})
         Syslog.logger.error('test')
         mock_stderr.assert_called_once_with('ERROR: test\n')
-        # mock_logger.assert_called_once_with('syslogger test')
+        # TODO: not yet working in pipeline
+        # mock_logger.assert_called_once_with('secondshot test')
         os.remove(logfile_name)
 
     @mock.patch('sys.stderr.write')

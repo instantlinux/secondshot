@@ -11,14 +11,14 @@ import os
 from sqlalchemy import create_engine
 import sqlalchemy.orm
 import tempfile
-import unittest2
+import unittest
 
 from config import Config
 from constants import Constants
 from models import ConfigTable, Host, Volume, metadata
 
 
-class TestBase(unittest2.TestCase):
+class TestBase(unittest.TestCase):
 
     def setUp(self):
         """Most tests require a database: this base class creates

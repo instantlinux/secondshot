@@ -13,6 +13,7 @@ import logging.handlers
 import os.path
 import sys
 
+logfile = None
 logger = logging.getLogger()
 syslog_enable = True
 
@@ -20,10 +21,10 @@ syslog_enable = True
 class Syslog(object):
 
     def __init__(self, opts):
-        global logger, syslog_enable
+        global logfile, logger, syslog_enable
 
         syslog_enable = True
-        self.prog = os.path.basename(__file__).split('.')[0]
+        self.prog = 'secondshot'
         self.log_facility = 'local1'
         if (opts['verbose'] or opts['log-level'].lower() == 'debug'):
             self.log_level = logging.DEBUG
@@ -46,40 +47,40 @@ class Syslog(object):
                 logger.addHandler(handler)
             else:
                 syslog_enable = False
-        self.logfile = opts['logfile']
+        logfile = opts['logfile']
 
     def debug(self, msg):
-        global logger, syslog_enable
+        global logfile, logger, syslog_enable
         if (self.log_level == logging.DEBUG):
             sys.stderr.write('DEBUG: %s\n' % msg)
             if (syslog_enable):
                 logger.debug('%s %s' % (self.prog, msg))
-            with open(self.logfile, 'a') as f:
+            with open(logfile, 'a') as f:
                 f.write(self._date_prefix('D', msg))
 
     def error(self, msg):
-        global logger, syslog_enable
+        global logfile, logger, syslog_enable
         sys.stderr.write('ERROR: %s\n' % msg)
         if (syslog_enable):
             logger.error('%s %s' % (self.prog, msg))
-        with open(self.logfile, 'a') as f:
+        with open(logfile, 'a') as f:
             f.write(self._date_prefix('E', msg))
 
     def info(self, msg):
-        global logger, syslog_enable
+        global logfile, logger, syslog_enable
         if (self.log_level == logging.DEBUG):
             sys.stderr.write('INFO: %s\n' % msg)
         if (syslog_enable):
             logger.info('%s %s' % (self.prog, msg))
-        with open(self.logfile, 'a') as f:
+        with open(logfile, 'a') as f:
             f.write(self._date_prefix('I', msg))
 
     def warn(self, msg):
-        global logger, syslog_enable
+        global logfile, logger, syslog_enable
         sys.stderr.write('WARN: %s\n' % msg)
         if (syslog_enable):
             logger.warn('%s %s' % (self.prog, msg))
-        with open(self.logfile, 'a') as f:
+        with open(logfile, 'a') as f:
             f.write(self._date_prefix('W', msg))
 
     def _date_prefix(self, severity, msg):

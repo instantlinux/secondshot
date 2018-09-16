@@ -254,6 +254,22 @@ class TestActions(test_base.TestBase):
         del(ret['volumes'][1]['created'])
         self.assertEqual(ret, expected)
 
+    def test_filehash(self):
+        expected = dict(
+            md5='724993f99db6ae3f6dd0f06f640ee865',
+            sha256='84a48fed6fc0d3148f97a39d176059c7'
+                   '777f524b513e4d1a136ede1cfe165cf7',
+            sha512='418e33685a9dc21c68e68e0d5a69bef6'
+                   '9dd068b1d1839167b65e08f00604e9a0'
+                   'd01a4f34442844023763c452c9b838a1'
+                   '0f8d370b6cb2803b3f64bae620566272')
+        fname = os.path.join(self.testdata_path,
+                             'TESTfile-%s.txt' % expected['md5'])
+
+        for hash in ['md5', 'sha256', 'sha512']:
+            self.assertEqual(binascii.hexlify(Actions._filehash(fname, hash)),
+                             expected[hash])
+
     def test_hashtype(self):
         ret = Actions._hashtype(binascii.unhexlify(
             'd41d8cd98f00b204e9800998ecf8427e'))
@@ -267,3 +283,15 @@ class TestActions(test_base.TestBase):
             'e9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327a'
             'f927da3e'))
         self.assertEqual(ret, 'sha512')
+        with self.assertRaises(RuntimeError):
+            Actions._hashtype('invalid')
+
+    def test_filetype(self):
+        self.assertEqual(Actions._filetype(0010000), 'p')
+        self.assertEqual(Actions._filetype(0020000), 'c')
+        self.assertEqual(Actions._filetype(0040000), 'd')
+        self.assertEqual(Actions._filetype(0100000), 'f')
+        self.assertEqual(Actions._filetype(0120000), 'l')
+        self.assertEqual(Actions._filetype(0140000), 's')
+        with self.assertRaises(RuntimeError):
+            Actions._filetype(0)

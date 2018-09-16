@@ -8,7 +8,7 @@ Reliability and simplicity of this are inherently provided by rsnapshot and rsyn
 
 The underlying rsync file transfer requires root permissions on both the source and destination. To improve security, a perl script called [rrsync](https://www.samba.org/ftp/unpacked/rsync/support/rrsync) is provided; see [Guy Rutenberg's explanation](https://www.guyrutenberg.com/2014/01/14/restricting-ssh-access-to-rsync).
 
-Example crontab and configuration files can be found here under etc/ and cron/.
+Example crontab and configuration files can be found here under bin/ and etc/.
 
 This tool is distributed as both a Python package at pypi.org, and as a Docker image at dockerhub.com. Use whichever distro is convenient for you.
 
