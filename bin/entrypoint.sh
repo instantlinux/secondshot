@@ -7,7 +7,12 @@ if [ ! -f /etc/timezone ] && [ ! -z "$TZ" ]; then
 fi
 
 # In Alpine, ndots option breaks DNS for non-FQDN hostnames
-sed -i -e 's/options ndots/#options ndots' /etc/resolv.conf
+if grep -q '^options ndots' /etc/resolv.conf; then
+    # cannot edit in-place with sed, resource-busy
+    cp /etc/resolv.conf /etc/resolv.conf.new
+    sed -i -e 's/^options ndots/#options ndots/' /etc/resolv.conf.new
+    cat /etc/resolv.conf.new >/etc/resolv.conf
+fi
 
 sed -i -e "s/{{ DBHOST }}/$DBHOST/" \
     -e "s/{{ DBNAME }}/$DBNAME/" \
