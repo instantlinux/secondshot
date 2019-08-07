@@ -41,10 +41,10 @@ setuptools.setup(
     packages=setuptools.find_packages(exclude=['tests']),
     include_package_data=True,
     install_requires=[
-        'alembic',
-        'docopt',
-        'pymysql',
-        'sqlalchemy'],
+        'alembic>=1.0.0',
+        'docopt>=0.6.2',
+        'pymysql>=0.9.2',
+        'sqlalchemy>=1.3.6'],
     python_requires='>=2.7.3',
     test_suite='tests.unittests',
     cmdclass={'test': PyTest},
@@ -56,8 +56,6 @@ setuptools.setup(
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7'
     ]

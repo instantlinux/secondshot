@@ -651,7 +651,7 @@ class Actions(object):
         Raises:
             OS exceptions
         """
-        with open(file, 'r') as f:
+        with open(file, 'rb') as f:
             if (hashtype == 'md5'):
                 return hashlib.md5(f.read()).digest()
             elif (hashtype == 'sha256'):
