@@ -111,6 +111,7 @@ class Actions(object):
                 id=saveset_id).one().saveset
         except Exception as ex:
             Syslog.logger.warn('action=calc_sums msg=%s' % str(ex))
+            Syslog.logger.traceback(ex)
         if (not host or not location):
             sys.exit('action=calc_sums msg=missing host/location')
         total = self.session.query(sqlalchemy.sql.func.sum(
@@ -126,7 +127,7 @@ class Actions(object):
             try:
                 filename = os.path.join(
                     Config.snapshot_root, location, file.file.path,
-                    file.file.filename)
+                    file.file.filename).encode('utf8').decode('ISO-8859-1')
                 file.file.shasum = self._filehash(filename, Config.hashtype)
                 self.session.add(file.file)
                 bytes += file.file.size
@@ -173,9 +174,10 @@ class Actions(object):
                     stat = os.lstat(os.path.join(dirpath, filename))
                     _path = pymysql.escape_string(os.path.relpath(
                         dirpath, Config.snapshot_root + '/' +
-                        Constants.SYNC_PATH).encode('unicode_escape'))
+                        Constants.SYNC_PATH).encode(
+                        'utf8', 'surrogateescape').decode('ISO-8859-1'))
                     _filename = pymysql.escape_string(filename.encode(
-                            'unicode_escape'))
+                        'utf8', 'surrogateescape').decode('ISO-8859-1'))
                 except OSError as ex:
                     if ex.errno != 2:
                         Syslog.logger.error(
@@ -317,6 +319,7 @@ class Actions(object):
         except Exception as ex:
             msg = 'action=rotate subprocess error=%s' % str(ex)
             Syslog.logger.error(msg)
+            Syslog.logger.traceback(ex)
             sys.exit(msg)
         if (ret != 0):
             msg = 'action=rotate subprocess returned=%d' % ret
@@ -423,6 +426,7 @@ class Actions(object):
                                 saveset_id))
             except Exception as ex:
                 Syslog.logger.error('action=start inject error=%s' % str(ex))
+                Syslog.logger.traceback(ex)
                 status = 'error'
                 continue
             results.append(self.calc_sums(saveset_id))
