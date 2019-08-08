@@ -127,7 +127,7 @@ class Actions(object):
             try:
                 filename = os.path.join(
                     Config.snapshot_root, location, file.file.path,
-                    file.file.filename).encode('utf8').decode('ISO-8859-1')
+                    file.file.filename)
                 file.file.shasum = self._filehash(filename, Config.hashtype)
                 self.session.add(file.file)
                 bytes += file.file.size
@@ -175,9 +175,9 @@ class Actions(object):
                     _path = pymysql.escape_string(os.path.relpath(
                         dirpath, Config.snapshot_root + '/' +
                         Constants.SYNC_PATH).encode(
-                        'utf8', 'surrogateescape').decode('ISO-8859-1'))
+                        'utf8', 'surrogateescape').decode('utf8'))
                     _filename = pymysql.escape_string(filename.encode(
-                        'utf8', 'surrogateescape').decode('ISO-8859-1'))
+                        'utf8', 'surrogateescape').decode('utf8'))
                 except OSError as ex:
                     if ex.errno != 2:
                         Syslog.logger.error(
