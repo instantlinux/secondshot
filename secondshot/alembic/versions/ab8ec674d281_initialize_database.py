@@ -29,7 +29,7 @@ def upgrade():
     )
     op.create_table(
         'files',
-        sa.Column('id', sa.INTEGER(), autoincrement=True, nullable=False),
+        sa.Column('id', sa.BIGINT(), autoincrement=True, nullable=False),
         sa.Column('path', sa.String(length=1023), nullable=False),
         sa.Column('filename', sa.String(length=255), nullable=False),
         sa.Column('owner', sa.String(length=48), nullable=True),
@@ -105,10 +105,10 @@ def upgrade():
                     unique=False)
     op.create_table(
         'backups',
-        sa.Column('id', sa.INTEGER(), autoincrement=True, nullable=False),
+        sa.Column('id', sa.BIGINT(), autoincrement=True, nullable=False),
         sa.Column('saveset_id', sa.INTEGER(), nullable=False),
         sa.Column('volume_id', sa.INTEGER(), nullable=False),
-        sa.Column('file_id', sa.INTEGER(), nullable=False),
+        sa.Column('file_id', sa.BIGINT(), nullable=False),
         sa.ForeignKeyConstraint(['file_id'], [u'files.id'], ),
         sa.ForeignKeyConstraint(['saveset_id'], [u'savesets.id'],
                                 ondelete='CASCADE'),

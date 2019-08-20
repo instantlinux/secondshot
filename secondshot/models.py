@@ -11,11 +11,13 @@ license: lgpl-2.1
 from sqlalchemy import BIGINT, BOOLEAN, Column, Enum, Float, ForeignKey, \
      INTEGER, Index, String, TIMESTAMP, text, VARBINARY
 from sqlalchemy import func
+from sqlalchemy.dialects import sqlite
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 metadata = Base.metadata
+BigIntId = BIGINT().with_variant(sqlite.INTEGER(), 'sqlite')
 
 
 class ConfigTable(Base):
@@ -50,7 +52,7 @@ class File(Base):
               'uid', 'gid', unique=True),
     )
 
-    id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
+    id = Column(BigIntId, primary_key=True, nullable=False, unique=True,
                 autoincrement=True)
     path = Column(String(1023), nullable=False)
     filename = Column(String(255), nullable=False)
