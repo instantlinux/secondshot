@@ -35,7 +35,7 @@ setuptools.setup(
     author_email='richb@instantlinux.net',
     url='https://github.com/instantlinux/secondshot',
     entry_points={
-      'console_scripts': ['secondshot=secondshot.secondshot:main']
+      'console_scripts': ['secondshot=secondshot.main:main']
     },
     scripts=['bin/check_rsnap.py', 'bin/cron-secondshot.sh', 'bin/rrsync'],
     packages=setuptools.find_packages(exclude=['tests']),

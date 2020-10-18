@@ -1,7 +1,9 @@
 .git
 *.pyc
-**/htmlcov/
+**/__pycache__
+*.egg-info/
 build/
 dist/
+htmlcov/
 python_env/
 tests/

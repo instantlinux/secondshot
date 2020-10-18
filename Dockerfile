@@ -15,23 +15,22 @@ ENV CRON_HOUR=0,8,16 \
     DBPORT=3306 \
     DBUSER=bkp \
     DBTYPE=sqlite \
+    PYTHONPATH=/usr/lib/python3.8/site-packages \
     TZ=UTC
 
 ARG RSNAPSHOT_VERSION=1.4.3-r0
-ARG SECONDSHOT_VERSION=0.10.1
+ARG SECONDSHOT_VERSION=0.10.2
 ARG RRSYNC_SHA=f7b931e73e811f76e0ad8466e654e374ee18025b837ec69abed805ff34e0f1ef
 
 VOLUME /backups /metadata /etc/secondshot/conf.d
 
 COPY requirements.txt /tmp/
 RUN apk add --no-cache --update rsnapshot=$RSNAPSHOT_VERSION dcron make \
-      patch py3-cryptography py3-six py3-urllib3 tzdata && \
-    apk add --no-cache --virtual .fetch-deps gcc libffi-dev musl-dev \
-      openssl-dev shadow && \
+      patch py3-cryptography py3-six py3-urllib3 shadow tzdata && \
     pip install -r /tmp/requirements.txt && \
     adduser -s /bin/sh -S -D -G adm secondshot && \
     usermod -o -u 0 secondshot && \
-    apk del .fetch-deps && rm -fr /var/cache/apk/* /tmp/*
+    rm -fr /var/cache/apk/* /tmp/*
 
 COPY etc/backup-daily.conf /etc/
 COPY . /build/
