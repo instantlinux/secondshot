@@ -1,6 +1,6 @@
 MAXFAIL   ?= 100
-PYPI_URL  ?= https://nexus.instantlinux.net/repository/pypi/
-PYPI_USER ?= svc_docker
+PYPI_URL  ?= https://upload.pypi.org/legacy/
+PYPI_USER ?= $(USER)
 RRSYNC_URL = https://www.samba.org/ftp/unpacked/rsync/support/rrsync
 SSL_CHAIN ?= /usr/local/share/ca-certificates/instantlinux-ca.crt
 VERSION   ?= $(shell grep -o '[0-9.]*' secondshot/_version.py)
