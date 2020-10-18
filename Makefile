@@ -2,7 +2,6 @@ MAXFAIL   ?= 100
 PYPI_URL  ?= https://upload.pypi.org/legacy/
 PYPI_USER ?= $(USER)
 RRSYNC_URL = https://www.samba.org/ftp/unpacked/rsync/support/rrsync
-SSL_CHAIN ?= /usr/local/share/ca-certificates/instantlinux-ca.crt
 VERSION   ?= $(shell grep -o '[0-9.]*' secondshot/_version.py)
 
 VENV=python_env
@@ -16,7 +15,7 @@ package: bin/rrsync dist/secondshot-$(VERSION).tar.gz
 publish: test_requirements package
 	@echo Publishing python package
 	(. $(VDIR)/bin/activate && \
-	 twine upload --cert=$(SSL_CHAIN) --repository-url $(PYPI_URL) \
+	 twine upload --repository-url $(PYPI_URL) \
 	   -u $(PYPI_USER) -p $(PYPI_PASSWORD) dist/*)
 
 test_functional:
