@@ -25,7 +25,7 @@ ARG RRSYNC_SHA=f7b931e73e811f76e0ad8466e654e374ee18025b837ec69abed805ff34e0f1ef
 VOLUME /backups /metadata /etc/secondshot/conf.d
 
 COPY requirements.txt /tmp/
-RUN apk add --no-cache --update rsnapshot=$RSNAPSHOT_VERSION curl dcron make \
+RUN apk add --no-cache --update rsnapshot=$RSNAPSHOT_VERSION dcron make \
       patch py3-cryptography py3-six py3-urllib3 shadow tzdata && \
     pip install -r /tmp/requirements.txt && \
     adduser -s /bin/sh -S -D -G adm secondshot && \

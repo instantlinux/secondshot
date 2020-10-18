@@ -8,7 +8,7 @@ USER_LOGIN   ?= $(GITLAB_USER_LOGIN)
 
 create_image: qemu
 	@echo docker build -t $(REGISTRY)/$(APPNAME)-$(CI_JOB_NAME):$(TAG)
-	@docker buildx build \
+	@docker buildx build --platform $(PLATFORMS) \
 	 --tag $(REGISTRY)/$(APPNAME)-$(CI_JOB_NAME):$(TAG) --push . \
 	 --build-arg=VCS_REF=$(CI_COMMIT_SHA) \
 	 --build-arg=TAG=$(TAG) \
