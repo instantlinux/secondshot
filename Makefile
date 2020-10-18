@@ -50,7 +50,7 @@ pytest: test_requirements
 	 --cov-report term-missing \
 	 --cov secondshot)
 
-dist/secondshot-$(VERSION).tar.gz:
+dist/secondshot-$(VERSION).tar.gz: test_requirements
 	@echo "Building package"
 	pip show wheel >/dev/null; \
 	if [ $$? -ne 0 ]; then \
