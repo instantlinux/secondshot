@@ -33,7 +33,7 @@ else
 	  image=$(shell basename $(target)) && \
 	  docker buildx build --platform $(PLATFORMS) \
 	    --tag $(REGISTRY)/$(APPNAME):$(CI_COMMIT_TAG) \
-	    --tag $(REGISTRY)/$(APPNAME)}:latest \
+	    --tag $(REGISTRY)/$(APPNAME):latest \
 	    --tag $(USER_LOGIN)/$(APPNAME):$(CI_COMMIT_TAG) \
 	    --tag $(USER_LOGIN)/$(APPNAME):latest --push . \
 	    --build-arg=VCS_REF=$(CI_COMMIT_SHA) \

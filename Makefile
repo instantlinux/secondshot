@@ -60,7 +60,7 @@ dist/secondshot-$(VERSION).tar.gz:
 
 bin/rrsync:
 	@echo "Downloading rrsync"
-	wget -q -O $@ $(RRSYNC_URL)
+	curl -sLo $@ $(RRSYNC_URL)
 	chmod +x $@
 
 clean:
