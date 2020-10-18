@@ -79,7 +79,7 @@ class Syslog(object):
         global logfile, logger, syslog_enable
         sys.stderr.write('WARN: %s\n' % msg)
         if (syslog_enable):
-            logger.warn('%s %s' % (self.prog, msg))
+            logger.warning('%s %s' % (self.prog, msg))
         with open(logfile, 'a') as f:
             f.write(self._date_prefix('W', msg))
 

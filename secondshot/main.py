@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """Linux-based backup utility with integrity-verification
 
 created 28-jul-2018 by richb@instantlinux.net
@@ -9,8 +9,9 @@ Usage:
            [--backup-host=HOST] [--host=HOST]... [--logfile=FILE]
            [--list-hosts] [--list-savesets] [--list-volumes]
            [--filter=STR] [--format=FORMAT] [--hashtype=ALGORITHM]
-           [--rsnapshot-conf=FILE] [--autoverify=BOOL] [--sequence=VALUES]
-           [--volume=VOL] [--log-level=STR] [--version] [-v]...
+           [--manifest=FILE] [--rsnapshot-conf=FILE] [--autoverify=BOOL]
+           [--sequence=VALUES] [--volume=VOL] [--log-level=STR]
+           [--version] [-v]...
   secondshot --action=start --host=HOST --volume=VOL [--autoverify=BOOL]
            [--log-level=STR] [-v]...
   secondshot --action=rotate --interval=INTERVAL [--logfile=FILE]
@@ -39,6 +40,7 @@ Options:
   --format=FORMAT       Format (text or json) [default: text]
   --logfile=FILE        Logging destination [default: /var/log/secondshot]
   --log-level=STR       Syslog level debug/info/warn/none [default: info]
+  --manifest=FILE       Name of manifest file [default: .secondshot-manifest]
   --rsnapshot-conf=FILE Path of rsnapshot's config file
                         (default: /etc/backup-daily.conf)
   --sequence=VALUES     Sequence of retention intervals
@@ -59,17 +61,10 @@ import docopt
 import json
 import sys
 
-if (sys.version_info.major == 2):
-    from actions import Actions
-    from config import Config
-    from syslogger import Syslog
-    from _version import __version__
-else:
-    # Python 3 requires explicit relative-path syntax
-    from .actions import Actions
-    from .config import Config
-    from .syslogger import Syslog
-    from ._version import __version__
+from secondshot.actions import Actions
+from secondshot.config import Config
+from secondshot.syslogger import Syslog
+from secondshot._version import __version__
 
 
 def main():

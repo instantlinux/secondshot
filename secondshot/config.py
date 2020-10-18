@@ -11,20 +11,16 @@ import os
 import sqlalchemy.exc
 import sys
 
-if (sys.version_info.major == 2):
-    from constants import Constants
-    from models import ConfigTable, Host
-    from syslogger import Syslog
-else:
-    from .constants import Constants
-    from .models import ConfigTable, Host
-    from .syslogger import Syslog
+from secondshot.constants import Constants
+from secondshot.models import ConfigTable, Host
+from secondshot.syslogger import Syslog
 
 
 class Config(object):
 
     autoverify = Constants.OPTS_DEFAULTS['autoverify']
     hashtype = Constants.OPTS_DEFAULTS['hashtype']
+    manifest = Constants.OPTS_DEFAULTS['manifest']
     rsnapshot_conf = Constants.OPTS_DEFAULTS['rsnapshot-conf']
     sequence = None
     snapshot_root = Constants.SNAPSHOT_ROOT
@@ -168,6 +164,7 @@ class Config(object):
         elif (opts['autoverify'].lower() in ['true', 'yes', 'on']):
             Config.autoverify = True
         Config.hashtype = opts['hashtype']
+        Config.manifest = opts['manifest']
         Config.rsnapshot_conf = opts['rsnapshot-conf']
         Config.sequence = opts['sequence'].split(',')
         Config.snapshot_root = Constants.SNAPSHOT_ROOT

@@ -102,7 +102,7 @@ def main():
     num_backups = row[0]
 
     # Count files in backups
-    q = 'SELECT COUNT(*) FROM backups JOIN savesets ON savesets.id=backups.saveset_id JOIN hosts on hosts.id=savesets.host_id \
+    q = 'SELECT files FROM savesets JOIN hosts on hosts.id=savesets.host_id \
          WHERE finished > (now() - INTERVAL ' + str(args.interval) + ' HOUR)'
     if args.host != 'all':
         q = q + ' AND hostname="' + args.host + '"'

@@ -1,0 +1,67 @@
+# Usage:
+# Set these private variables in gitlab-ci environment:
+#   PYPI_PASSWORD, PYPI_USER, REGISTRY_URI
+
+variables:
+  PLATFORMS: linux/amd64,linux/arm64,linux/arm/v6,linux/arm/v7
+  
+stages:
+  - Analyze and Unit Test
+  - Images
+  - Functional Tests
+  - Publish Packages
+  - Clean
+
+image: instantlinux/python-builder:3.8.5-r0
+
+before_script:
+  - export TAG=bld_$CI_PIPELINE_IID_${CI_COMMIT_SHA:0:7}
+
+.registry_template: &registry_login
+  before_script:
+  - export TAG=bld_$CI_PIPELINE_IID_${CI_COMMIT_SHA:0:7}
+  - docker login -u $CI_REGISTRY_USER -p $CI_JOB_TOKEN $REGISTRY_URI
+  services: [ "docker:dind" ]
+
+.create_image_template: &create_image
+  script: make create_image
+
+analysis:
+  stage: Analyze and Unit Test
+  script:
+  - set -e
+  - make analysis
+  - make test
+  artifacts:
+    paths:
+    - htmlcov/
+    - tests/results.xml
+    reports:
+      junit: tests/results.xml
+  coverage: '/TOTAL.*\s(\d+)%/'
+
+img:
+  stage: Images
+  <<: *registry_login
+  <<: *create_image
+
+test:
+  stage: Functional Tests
+  script: make test_functional
+
+promote_images:
+  stage: Publish Packages
+  <<: *registry_login
+  script: IMAGES="img" make promote_images
+  only: [ master, tags ]
+
+publish_pypi:
+  stage: Publish Packages
+  script: make publish
+  only: [ tags ]
+
+clean:
+  stage: Clean
+  <<: *registry_login
+  script: make clean_images
+  when: always

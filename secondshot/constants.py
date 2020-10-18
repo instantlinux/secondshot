@@ -25,6 +25,7 @@ class Constants(object):
         'dbuser': 'bkp',
         'db-url': None,
         'hashtype': 'md5',
+        'manifest': '.snapshot-manifest',
         'rsnapshot-conf': '/etc/backup-daily.conf'}
     SNAPSHOT_ROOT = '/backups'
     SYNC_PATH = '.sync'

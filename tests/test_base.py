@@ -13,9 +13,9 @@ import sqlalchemy.orm
 import tempfile
 import unittest
 
-from config import Config
-from constants import Constants
-from models import ConfigTable, Host, Volume, metadata
+from secondshot.config import Config
+from secondshot.constants import Constants
+from secondshot.models import ConfigTable, Host, Volume, metadata
 
 
 class TestBase(unittest.TestCase):
@@ -28,7 +28,8 @@ class TestBase(unittest.TestCase):
         self.logfile_name = tempfile.mkstemp(prefix='_test')[1]
         self.testhost = 'test'
 
-        self.engine = create_engine('sqlite:///:memory:')
+        db_url = os.environ.get('DB_URL', 'sqlite:///:memory:')
+        self.engine = create_engine(db_url)
         self.session = sqlalchemy.orm.scoped_session(
             sqlalchemy.orm.sessionmaker(
                 autocommit=False, bind=self.engine))

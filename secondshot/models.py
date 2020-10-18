@@ -84,6 +84,8 @@ class Saveset(Base):
                 autoincrement=True)
     saveset = Column(String(45), nullable=False, unique=True)
     location = Column(String(32))
+    files = Column(BIGINT)
+    size = Column(BIGINT)
     created = Column(TIMESTAMP, nullable=False, server_default=func.now())
     finished = Column(TIMESTAMP, index=True)
     # host_id = Column(ForeignKey(u'hosts.id'), primary_key=True,
@@ -97,7 +99,6 @@ class Saveset(Base):
     backup_host = relationship(
         'Host', primaryjoin='Saveset.backup_host_id == Host.id')
     host = relationship('Host', primaryjoin='Saveset.host_id == Host.id')
-    backup = relationship('Backup')
 
 
 class Volume(Base):
@@ -117,28 +118,6 @@ class Volume(Base):
                      index=True, server_default=text("0"))
 
     host = relationship('Host')
-
-
-class Backup(Base):
-    __tablename__ = 'backups'
-
-    id = Column(INTEGER, primary_key=True, nullable=False, unique=True,
-                autoincrement=True)
-    # saveset_id = Column(ForeignKey(u'savesets.id', ondelete='CASCADE'),
-    #                     primary_key=True, nullable=False, index=True)
-    # volume_id = Column(ForeignKey(u'volumes.id'), primary_key=True,
-    #                    nullable=False, index=True)
-    # file_id = Column(ForeignKey(u'files.id'), primary_key=True,
-    #                  nullable=False, index=True)
-    saveset_id = Column(ForeignKey(u'savesets.id', ondelete='CASCADE'),
-                        nullable=False, index=True)
-    volume_id = Column(ForeignKey(u'volumes.id'),
-                       nullable=False, index=True)
-    file_id = Column(ForeignKey(u'files.id'), nullable=False, index=True)
-
-    file = relationship('File')
-    saveset = relationship('Saveset', cascade='all,delete')
-    volume = relationship('Volume')
 
 
 class AlembicVersion(Base):

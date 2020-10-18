@@ -26,18 +26,13 @@ import subprocess
 import sys
 import time
 
-if (sys.version_info.major == 2):
-    from config import Config
-    from constants import Constants
-    from models import (Backup, File, Host, Saveset, Volume, metadata,
-                        AlembicVersion)
-    from syslogger import Syslog
-else:
-    from .config import Config
-    from .constants import Constants
-    from .models import (Backup, File, Host, Saveset, Volume, metadata,
-                         AlembicVersion)
-    from .syslogger import Syslog
+# -*- coding: utf-8 -*-
+
+from secondshot.config import Config
+from secondshot.constants import Constants
+from secondshot.models import File, Host, Saveset, Volume, metadata, \
+    AlembicVersion
+from secondshot.syslogger import Syslog
 
 
 class Actions(object):
@@ -81,6 +76,9 @@ class Actions(object):
         if ('snapshot_root' in self.rsnapshot_cfg):
             Config.snapshot_root = self.rsnapshot_cfg[
                 'snapshot_root'].rstrip('/')
+        self.manifest_file = os.path.join(
+            Config.snapshot_root, Constants.SYNC_PATH,
+            Config.manifest)
         if ('retain' in self.rsnapshot_cfg):
             self.intervals = self.rsnapshot_cfg['retain']
         elif ('interval' in self.rsnapshot_cfg):
@@ -101,12 +99,6 @@ class Actions(object):
                 id=saveset_id).one().host.hostname
             location = self.session.query(Saveset).filter_by(
                 id=saveset_id).one().location
-            missing_sha = self.session.query(Backup). \
-                join(Backup.file). \
-                filter(Backup.saveset_id == saveset_id,
-                       File.shasum == None,  # noqa: E711
-                       File.type == 'f',
-                       File.size > 0)
             saveset = self.session.query(Saveset).filter_by(
                 id=saveset_id).one().saveset
         except Exception as ex:
@@ -114,40 +106,48 @@ class Actions(object):
             Syslog.logger.traceback(ex)
         if (not host or not location):
             sys.exit('action=calc_sums msg=missing host/location')
-        total = self.session.query(sqlalchemy.sql.func.sum(
-            File.size).label('total')).filter(
-            Backup.saveset_id == saveset_id).join(
-            Backup, File.id == Backup.file_id).one()[0]
-        Syslog.logger.info('START action=calc_sums saveset=%s (size=%.3fGB) '
-                           'from host=%s for location=%s' %
-                           (saveset, float(total) / 1e9, host, location))
-        (bytes, count) = (0, 0)
-        for file in missing_sha:
-            count += 1
-            try:
-                filename = os.path.join(
-                    Config.snapshot_root, location, file.file.path,
-                    file.file.filename)
-                file.file.shasum = self._filehash(filename, Config.hashtype)
-                self.session.add(file.file)
-                bytes += file.file.size
-            except Exception as ex:
-                Syslog.logger.warn('action=calc_sums id=%d msg=skipped '
-                                   'error=%s' % (file.file.id, str(ex)))
-            if (count % 1000 == 0):
-                Syslog.logger.debug('action=calc_sums count=%d bytes=%d' %
-                                    (count, bytes))
-                self.session.commit()
+        Syslog.logger.info('START action=calc_sums saveset=%s from host=%s '
+                           'for location=%s' % (saveset, host, location))
+        manifest_file = os.path.join(
+            Config.snapshot_root, location, Config.manifest)
+        with open(manifest_file, 'r+') as mfile:
+            mfile.readline()
+            position = mfile.tell()
+            (numbytes, count, total) = (0, 0, 0)
+            for line in mfile:
+                file_id, file_type, size, has_sum = line.strip().split(',')
+                total += int(size)
+                if has_sum == 'Y' or file_type != 'f' or int(size) == 0:
+                    continue
+                count += 1
+                try:
+                    file = self.session.query(File).filter_by(id=file_id).one()
+                    filename = os.path.join(
+                        Config.snapshot_root, location, file.path,
+                        file.filename)
+                    file.shasum = self._filehash(filename, Config.hashtype)
+                    self.session.add(file)
+                    mfile.seek(position)
+                    mfile.write('%s,%s,%s,Y\n' % (file_id, file_type, size))
+                    numbytes += file.size
+                except Exception as ex:
+                    Syslog.logger.warn('action=calc_sums id=%d msg=skipped '
+                                       'error=%s' % (file.id, str(ex)))
+                if (count % 1000 == 0):
+                    Syslog.logger.debug('action=calc_sums count=%d bytes=%d' %
+                                        (count, numbytes))
+                    self.session.commit()
+                position = mfile.tell()
 
         self.session.commit()
         Syslog.logger.info('FINISHED action=calc_sums saveset=%s '
                            'processed=%.3fGB' %
-                           (saveset, float(bytes) / 1e9))
+                           (saveset, float(numbytes) / 1e9))
         return {'calc_sums': dict(
-            status='ok', saveset=saveset, size=total, processed=bytes)}
+            status='ok', saveset=saveset, size=total, processed=numbytes)}
 
     def inject(self, host, volume, pathname, saveset_id):
-        """Inject filesystem metadata for each file in a saveset into database
+        """Inject filesystem metadata for each file in a saveset into manifest
 
         Args:
             host (str):       host from which to copy files
@@ -158,8 +158,6 @@ class Actions(object):
             result (dict):    results summary
         """
         try:
-            vol = self.session.query(Volume).filter_by(
-                volume=volume).one()
             host_record = self.session.query(Host).filter_by(
                 hostname=host).one()
             saveset = self.session.query(Saveset).filter_by(
@@ -167,9 +165,14 @@ class Actions(object):
         except Exception as ex:
             sys.exit('action=inject Invalid host or volume: %s' % str(ex))
 
-        (count, skipped) = (0, 0)
+        mfile = open(os.path.join(pathname, Config.manifest), 'w')
+        mfile.write('file_id,type,file_size,has_checksum\n')
+
+        (count, numbytes, skipped) = (0, 0, 0)
         for dirpath, _, filenames in os.walk(pathname):
             for filename in filenames:
+                if filename == Config.manifest:
+                    continue
                 try:
                     stat = os.lstat(os.path.join(dirpath, filename))
                     _path = pymysql.escape_string(os.path.relpath(
@@ -230,22 +233,18 @@ class Actions(object):
                         # LAST_INSERT_ID functionality
                         if (self.engine.name == 'sqlite'):
                             # sqlite lacks UPSERT capability, but this is
-                            # good enough for exisiting unit-test. TODO: fix
+                            # good enough for existing unit-test. TODO: fix
                             #  this so we don't require a 'real' SQL.
-                            sql_insert1 = (
+                            sql_insert = (
                                 u"INSERT OR IGNORE INTO files (%(columns)s)"
                                 u" VALUES('%(values)s');" % dict(
                                     columns=','.join(record.keys()),
                                     values="','".join(str(item) for item
                                                       in record.values()),
                                     owner=owner, group=group))
-                            sql_insert2 = (
-                                "INSERT INTO backups (saveset_id,volume_id,"
-                                "file_id) VALUES(%(saveset_id)d,%(volume_id)d,"
-                                "LAST_INSERT_ROWID());" %
-                                dict(saveset_id=saveset.id, volume_id=vol.id))
+                            sql_id = 'LAST_INSERT_ROWID()'
                         else:
-                            sql_insert1 = (
+                            sql_insert = (
                                 u"INSERT INTO files (%(columns)s)"
                                 u" VALUES('%(values)s')"
                                 u" ON DUPLICATE KEY UPDATE owner='%(owner)s',"
@@ -255,13 +254,8 @@ class Actions(object):
                                     values="','".join(str(item) for item
                                                       in record.values()),
                                     owner=owner, group=group))
-                            sql_insert2 = (
-                                "INSERT INTO backups (saveset_id,volume_id,"
-                                "file_id) VALUES(%(saveset_id)d,%(volume_id)d,"
-                                "LAST_INSERT_ID());" %
-                                dict(saveset_id=saveset.id, volume_id=vol.id))
-                        self.session.execute(sql_insert1)
-                        self.session.execute(sql_insert2)
+                            sql_id = 'LAST_INSERT_ID()'
+                        self.session.execute(sql_insert)
                         break
                     except sqlalchemy.exc.OperationalError as ex:
                         Syslog.logger.warn('action=inject path=%s filename=%s '
@@ -279,13 +273,24 @@ class Actions(object):
                         raise
                     if (retry == 4):
                         skipped += 1
+                file_id = self.session.execute(
+                    'SELECT %s' % sql_id).fetchone()[0]
+                file = self.session.query(File).filter_by(id=file_id).one()
+                has_sha = 'Y' if file.shasum else 'N'
+                mfile.write('%d,%s,%d,%s\n' % (
+                    file_id, self._filetype(stat.st_mode), stat.st_size,
+                    has_sha))
                 count += 1
+                numbytes += stat.st_size
                 if (count % Constants.MAX_INSERT == 0):
                     Syslog.logger.debug('action=inject count=%d' % count)
                     self.session.commit()
 
+        mfile.close()
         self.session.commit()
         saveset.finished = sqlalchemy.func.now()
+        saveset.files = count
+        saveset.size = numbytes
         self.session.add(saveset)
         self.session.commit()
         Syslog.logger.info('FINISHED action=inject saveset=%s, file_count=%d, '
@@ -501,45 +506,42 @@ class Actions(object):
             except sqlalchemy.orm.exc.NoResultFound:
                 raise RuntimeError('VERIFY saveset=%s not found' % saveset)
 
-            count = missing = self.session.query(Backup).join(
-                    File).filter(
-                        Backup.saveset_id == record.id,
-                        File.type == 'f',
-                        File.shasum == None,  # noqa: E711
-                        File.size > 0).count()
-            (errors, skipped) = (0, 0)
-            for file in self.session.query(Backup).join(
-                    File).filter(
-                        Backup.saveset_id == record.id,
-                        File.type == 'f',
-                        File.shasum != None,  # noqa: E711
-                        File.size > 0):
+            manifest_file = os.path.join(
+                Config.snapshot_root, record.location, Config.manifest)
+            mfile = open(manifest_file, 'r')
+            mfile.readline()
+            count, errors, missing, skipped = (0, 0, 0, 0)
+            for line in mfile:
+                file_id, file_type, size, has_sum = line.strip().split(',')
+                if has_sum != 'Y' or file_type != 'f' or int(size) == 0:
+                    continue
                 count += 1
-                if (Config.hashtype != self._hashtype(file.file.shasum)):
-                    Config.hashtype = self._hashtype(file.file.shasum)
+                file = self.session.query(File).filter_by(id=file_id).one()
+                if (Config.hashtype != self._hashtype(file.shasum)):
+                    Config.hashtype = self._hashtype(file.shasum)
                     Syslog.logger.info('action=verify hashtype=%s'
                                        % Config.hashtype)
                 try:
                     filename = os.path.join(
-                        Config.snapshot_root, record.location, file.file.path,
-                        file.file.filename)
+                        Config.snapshot_root, record.location, file.path,
+                        file.filename)
                     sha = self._filehash(filename, Config.hashtype)
-                    if (sha != file.file.shasum):
+                    if (sha != file.shasum):
                         Syslog.logger.warn(
                             'BAD CHECKSUM: action=verify file=%s/%s '
                             'expected=%s actual=%s' %
-                            (file.file.path, file.file.filename,
-                             binascii.hexlify(file.file.shasum),
+                            (file.path, file.filename,
+                             binascii.hexlify(file.shasum),
                              binascii.hexlify(sha)))
                         errors += 1
                 except Exception as ex:
                     Syslog.logger.debug('sha(%s): %s' % (
-                        file.file.filename, str(ex)))
+                        file.filename, str(ex)))
                     skipped += 1
                 if (count % 1000 == 0):
                     Syslog.logger.debug('action=verify count=%d skipped=%d '
                                         'errors=%d' % (count, skipped, errors))
-
+            mfile.close()
             msg = ('VERIFY: saveset=%s count=%d errors=%d missing=%d '
                    'skipped=%d' % (saveset, count, errors, missing, skipped))
             if (errors):
@@ -627,6 +629,8 @@ class Actions(object):
                     created=item.created.strftime(self.time_fmt),
                     host=item.host.hostname,
                     backup_host=item.backup_host.hostname,
+                    files=item.files,
+                    size=item.size,
                     finished=item.finished.strftime(self.time_fmt) if
                              item.finished else None) for item in items]}
 
@@ -647,7 +651,7 @@ class Actions(object):
             file (str): name of file
             hashtype (str): type of hash
         Returns:
-            str:  binary digest (as 16, 32 or 64 bytes)
+            bytes:  binary digest (as 16, 32 or 64 bytes)
         Raises:
             OS exceptions
         """
@@ -666,7 +670,7 @@ class Actions(object):
         Args:
             shasum (str): binary string
         Returns:
-            str:  hash type md5, sha256 or sha512
+            bytes:  hash type md5, sha256 or sha512
         Raises:
             RuntimeError on failure
         """
@@ -677,7 +681,7 @@ class Actions(object):
         elif (len(shasum) == 64):
             return 'sha512'
         else:
-            msg = ('Hash type of %s unrecognized' % binascii.hexlify(shasum))
+            msg = ('Hash type unrecognized')
             Syslog.logger.error(msg)
             raise RuntimeError(msg)
 

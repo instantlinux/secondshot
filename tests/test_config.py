@@ -12,9 +12,8 @@ import shutil
 import tempfile
 
 import test_base
-from secondshot import Config
-from constants import Constants
-from models import ConfigTable
+from secondshot import Config, Constants
+from secondshot.models import ConfigTable
 
 
 class TestConfig(test_base.TestBase):
@@ -118,7 +117,7 @@ class TestConfig(test_base.TestBase):
             ssh_args='-i /home/secondshot/.ssh/id_rsa -c aes192-ctr')
 
         test_config = os.path.join(os.path.abspath(os.path.dirname(
-            __file__)), '..', '..', 'etc', 'backup-daily.conf')
+            __file__)), '..', 'etc', 'backup-daily.conf')
         Config.rsnapshot_conf = test_config
         ret = Config().rsnapshot_cfg()
         self.assertEqual(ret, expected)
@@ -154,6 +153,7 @@ class TestConfig(test_base.TestBase):
             'hashtype': 'md5',
             'host': ['test', 'cnn', 'fox'],
             'logfile': '/var/log/test',
+            'manifest': '.snapshot-manifest',
             'rsnapshot-conf': Constants.OPTS_DEFAULTS['rsnapshot-conf'],
             'sequence': 'default'}
 

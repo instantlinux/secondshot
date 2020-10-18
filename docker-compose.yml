@@ -35,7 +35,7 @@ services:
     deploy:
       placement:
         constraints:
-        - node.labels.swarm-sync == primary
+        - node.labels.service.data-sync == allow
 
 volumes:
   backups:

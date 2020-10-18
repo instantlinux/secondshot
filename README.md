@@ -1,6 +1,7 @@
 ## secondshot
 
-[![](https://images.microbadger.com/badges/version/instantlinux/secondshot.svg)](https://microbadger.com/images/instantlinux/secondshot "Version badge") [![](https://images.microbadger.com/badges/image/instantlinux/secondshot.svg)](https://microbadger.com/images/instantlinux/secondshot "Image badge") [![](https://images.microbadger.com/badges/commit/instantlinux/secondshot.svg)](https://microbadger.com/images/instantlinux/secondshot "Commit badge")
+[![](https://img.shields.io/docker/v/instantlinux/secondshot?sort=date)]((https://microbadger.com/images/instantlinux/secondshot "Version badge") [![](https://images.microbadger.com/badges/image/instantlinux/secondshot.svg)](https://microbadger.com/images/instantlinux/secondshot "Image badge")  ![](https://img.shields.io/badge/platform-amd64%20arm64%20arm%2Fv6%20arm%2Fv7-blue "Platform badge") [![](https://img.shields.io/badge/dockerfile-latest-blue)](https://gitlab.com/instantlinux/docker-tools/-/blob/master/images/secondshot/Dockerfile "dockerfile")
+
 
 This is a command-line tool and library for managing filesystem backups on a local network. Each incremental backup is made available according to rotation rules defined in [this 2004 article](http://www.mikerubel.org/computers/rsync_snapshots/) by Mike Rubel.
 
@@ -76,4 +77,4 @@ To keep this tool simple, there are a few things that it explicitly does _not_ d
 * Cloud storage like S3 or B2, which don't provide POSIX filesystem semantics
 * Block-level de-duplication; you will want another tool to backup large files that require it
 
-[![](https://images.microbadger.com/badges/license/instantlinux/secondshot.svg)](https://microbadger.com/images/instantlinux/secondshot "License badge")
+[![](https://img.shields.io/badge/license-LGPL--2.1-red.svg)](https://choosealicense.com/licenses/lgpl-2.1/ "License badge") [![](https://img.shields.io/badge/code-instantlinux%2Fsecondshot-blue.svg)](https://github.com/instantlinux/secondshot "Code repo")

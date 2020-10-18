@@ -1,4 +1,4 @@
-FROM python:3.7.0-alpine3.8
+FROM python:3.8.5-alpine3.12
 MAINTAINER Rich Braun <docker@instantlinux.net>
 ARG BUILD_DATE
 ARG VCS_REF
@@ -17,15 +17,15 @@ ENV CRON_HOUR=0,8,16 \
     DBTYPE=sqlite \
     TZ=UTC
 
-ARG RSNAPSHOT_VERSION=1.4.2-r0
-ARG SECONDSHOT_VERSION=0.9.5
-ARG RRSYNC_SHA=8c9482dee40c77622e3bde2da3967cc92a0b04e0c0ce3978738410d2dbd3d436
+ARG RSNAPSHOT_VERSION=1.4.3-r0
+ARG SECONDSHOT_VERSION=0.10.1
+ARG RRSYNC_SHA=f7b931e73e811f76e0ad8466e654e374ee18025b837ec69abed805ff34e0f1ef
 
 VOLUME /backups /metadata /etc/secondshot/conf.d
 
 COPY requirements.txt /tmp/
 RUN apk add --no-cache --update rsnapshot=$RSNAPSHOT_VERSION dcron make \
-      tzdata && \
+      patch py3-cryptography py3-six py3-urllib3 tzdata && \
     apk add --no-cache --virtual .fetch-deps gcc libffi-dev musl-dev \
       openssl-dev shadow && \
     pip install -r /tmp/requirements.txt && \
@@ -35,7 +35,7 @@ RUN apk add --no-cache --update rsnapshot=$RSNAPSHOT_VERSION dcron make \
 
 COPY etc/backup-daily.conf /etc/
 COPY . /build/
-RUN cd /build && ls -lR && make package && \
+RUN cd /build && make package && \
     pip install file:///build/dist/secondshot-$SECONDSHOT_VERSION.tar.gz && \
     cp /etc/rsnapshot.conf.default /etc/rsnapshot.conf && \
     patch /etc/rsnapshot.conf /build/etc/rsnapshot.conf.patch && \

@@ -37,7 +37,3 @@
  #backup	/var/log/rsnapshot		localhost/
  #backup	/etc/passwd	localhost/
  #backup	/home/foo/My Documents/		localhost/
-@@ -247,4 +247,10 @@
- 
- # RSYNC.SAMBA.ORG
- #backup	rsync://rsync.samba.org/rsyncftp/	rsync.samba.org/rsyncftp/

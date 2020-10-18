@@ -15,16 +15,17 @@ import shutil
 import subprocess
 import tempfile
 
+from secondshot.models import File, Saveset, Volume
+from secondshot.actions import Actions
+from secondshot.constants import Constants
+from secondshot.syslogger import Syslog
+
 import test_base
-from constants import Constants
-from models import Backup, Saveset, Volume
-from secondshot import Actions
-from syslogger import Syslog
 
 
 class TestActions(test_base.TestBase):
 
-    @mock.patch('syslogger.logger')
+    @mock.patch('secondshot.syslogger.logger')
     def setUp(self, mock_log):
         super(TestActions, self).setUp()
         self.snapshot_root = tempfile.mkdtemp(prefix='_testdir')
@@ -34,7 +35,7 @@ class TestActions(test_base.TestBase):
                                         Constants.SYNC_PATH)
         self.testdata_path = tempfile.mkdtemp(prefix='_backup')
         subprocess.call(['tar', 'xf', os.path.join(os.path.abspath(
-            os.path.dirname(__file__)), '..', 'testdata', 'testfiles.tar.bz'),
+            os.path.dirname(__file__)), 'testdata', 'testfiles.tar.bz'),
                 '-C', self.testdata_path, '.'])
         self.rsnapshot_conf = tempfile.mkstemp(prefix='_test')[1]
         with open(self.rsnapshot_conf, 'w') as f:
@@ -75,7 +76,7 @@ class TestActions(test_base.TestBase):
         shutil.rmtree(self.snapshot_root)
         shutil.rmtree(self.testdata_path)
 
-    @mock.patch('syslogger.Syslog._now')
+    @mock.patch('secondshot.syslogger.Syslog._now')
     def test_new_saveset(self, mock_now):
         expected = dict(id=2, saveset='%s-%s-%s' % (
             self.testhost, self.volume, '20180801-13'))
@@ -92,20 +93,26 @@ class TestActions(test_base.TestBase):
 
         shutil.copytree(
             self.testdata_path,
-            os.path.join(self.volume_path, Constants.SYNC_PATH, self.testhost))
+            os.path.join(self.volume_path, self.testhost))
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
         ret = obj.inject(self.testhost, self.volume, self.volume_path,
                          self.saveset_id)
         self.assertEqual(ret, expected)
 
-        # verify contents of database tables
         count = 0
-        for item in self.session.query(Backup):
-            self.assertEqual('/'.join(item.file.path.split('/')[:2]),
-                             os.path.join(Constants.SYNC_PATH, self.testhost))
-            self.assertEqual(item.file.size, 52)
-            self.assertEqual(item.file.shasum, None)
-            count += 1
+        with open(os.path.join(
+                self.volume_path,
+                Constants.OPTS_DEFAULTS['manifest']), 'r') as mfile:
+            headers = mfile.readline()
+            self.assertEqual(headers, 'file_id,type,file_size,has_checksum\n')
+            for line in mfile:
+                file_id, file_type, file_size, has_sum = line.split(',')
+                file = self.session.query(File).filter_by(id=file_id).one()
+                self.assertEqual('/'.join(file.path.split('/')[:1]),
+                                 os.path.join(self.testhost))
+                self.assertEqual(file.size, 52)
+                self.assertEqual(file.shasum, None)
+                count += 1
         self.assertEqual(count, expected['inject']['file_count'])
 
     def test_calc_sums(self):
@@ -117,7 +124,7 @@ class TestActions(test_base.TestBase):
 
         shutil.copytree(
             self.testdata_path,
-            os.path.join(self.volume_path, Constants.SYNC_PATH, self.testhost))
+            os.path.join(self.volume_path, self.testhost))
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
         obj.inject(self.testhost, self.volume, self.volume_path,
                    self.saveset_id)
@@ -125,10 +132,20 @@ class TestActions(test_base.TestBase):
         self.assertEqual(ret, expected)
 
         count = 0
-        for item in self.session.query(Backup):
-            self.assertEqual(item.file.shasum,
-                             binascii.unhexlify(item.file.filename[9:41]))
-            count += 1
+        with open(os.path.join(
+                self.volume_path,
+                Constants.OPTS_DEFAULTS['manifest']), 'r') as mfile:
+            headers = mfile.readline()
+            self.assertEqual(headers, 'file_id,type,file_size,has_checksum\n')
+            for line in mfile:
+                file_id, file_type, file_size, has_sum = line.split(',')
+                file = self.session.query(File).filter_by(id=file_id).one()
+                if file_type != 'f':
+                    continue
+                print('filename=%s, file_id=%s' % (file.filename, file_id))
+                self.assertEqual(file.shasum,
+                                 binascii.unhexlify(file.filename[9:41]))
+                count += 1
         self.assertEqual(count, 15)
 
     @mock.patch('subprocess.call')
@@ -152,9 +169,10 @@ class TestActions(test_base.TestBase):
 
         shutil.copytree(
             self.testdata_path,
-            os.path.join(self.volume_path, 'short.0', self.testhost))
+            os.path.join(self.snapshot_root, 'short.0', self.testhost))
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
-        obj.inject(self.testhost, self.volume, self.volume_path,
+        obj.inject(self.testhost, self.volume,
+                   os.path.join(self.snapshot_root, 'short.0', self.testhost),
                    saveset.id)
         ret = obj.rotate('short')
         self.assertEqual(ret, expected)
@@ -166,10 +184,10 @@ class TestActions(test_base.TestBase):
         self.assertEqual(record.location, 'short.1')
 
     @mock.patch('subprocess.call')
-    @mock.patch('actions.Actions.verify')
-    @mock.patch('actions.Actions.calc_sums')
-    @mock.patch('actions.Actions.inject')
-    @mock.patch('actions.Actions.new_saveset')
+    @mock.patch('secondshot.actions.Actions.verify')
+    @mock.patch('secondshot.actions.Actions.calc_sums')
+    @mock.patch('secondshot.actions.Actions.inject')
+    @mock.patch('secondshot.actions.Actions.new_saveset')
     def test_start(self, mock_saveset, mock_inject, mock_calc, mock_verify,
                    mock_subprocess):
         mock_subprocess.return_value = 0
@@ -208,7 +226,7 @@ class TestActions(test_base.TestBase):
 
         shutil.copytree(
             self.testdata_path,
-            os.path.join(self.volume_path, Constants.SYNC_PATH, self.testhost))
+            os.path.join(self.volume_path, self.testhost))
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
         obj.inject(self.testhost, self.volume, self.volume_path,
                    self.saveset_id)
@@ -230,7 +248,9 @@ class TestActions(test_base.TestBase):
             location=Constants.SYNC_PATH,
             host=self.testhost,
             backup_host=self.testhost,
-            finished=None)])
+            files=None,
+            finished=None,
+            size=None)])
 
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
         ret = obj.list_savesets()
@@ -268,7 +288,7 @@ class TestActions(test_base.TestBase):
 
         for hash in ['md5', 'sha256', 'sha512']:
             self.assertEqual(binascii.hexlify(Actions._filehash(fname, hash)),
-                             expected[hash])
+                             bytes(expected[hash], encoding='utf-8'))
 
     def test_hashtype(self):
         ret = Actions._hashtype(binascii.unhexlify(
@@ -287,11 +307,11 @@ class TestActions(test_base.TestBase):
             Actions._hashtype('invalid')
 
     def test_filetype(self):
-        self.assertEqual(Actions._filetype(0010000), 'p')
-        self.assertEqual(Actions._filetype(0020000), 'c')
-        self.assertEqual(Actions._filetype(0040000), 'd')
-        self.assertEqual(Actions._filetype(0100000), 'f')
-        self.assertEqual(Actions._filetype(0120000), 'l')
-        self.assertEqual(Actions._filetype(0140000), 's')
+        self.assertEqual(Actions._filetype(0o0010000), 'p')
+        self.assertEqual(Actions._filetype(0o0020000), 'c')
+        self.assertEqual(Actions._filetype(0o0040000), 'd')
+        self.assertEqual(Actions._filetype(0o0100000), 'f')
+        self.assertEqual(Actions._filetype(0o0120000), 'l')
+        self.assertEqual(Actions._filetype(0o0140000), 's')
         with self.assertRaises(RuntimeError):
             Actions._filetype(0)

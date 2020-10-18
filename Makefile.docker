@@ -1,0 +1,50 @@
+# Docker build
+
+APPNAME      ?= secondshot
+REGISTRY     ?= $(REGISTRY_URI)/$(CI_PROJECT_PATH)
+USER_LOGIN   ?= $(GITLAB_USER_LOGIN)
+
+.PHONY: qemu
+
+create_image: qemu
+	@echo docker build -t $(REGISTRY)/$(APPNAME)-$(CI_JOB_NAME):$(TAG)
+	@docker buildx build \
+	 --tag $(REGISTRY)/$(APPNAME)-$(CI_JOB_NAME):$(TAG) --push . \
+	 --build-arg=VCS_REF=$(CI_COMMIT_SHA) \
+	 --build-arg=TAG=$(TAG) \
+	 --build-arg=BUILD_DATE=$(shell date +%Y-%m-%dT%H:%M:%SZ)
+
+promote_images: qemu
+ifeq ($(CI_COMMIT_TAG),)
+	# On master: push to latest on registry.gitlab.com; have to run
+	# buildx in order to push multi-arch manifest
+	$(foreach target, $(IMAGES), \
+	  image=$(shell basename $(target)) && \
+	  docker buildx build --platform $(PLATFORMS) \
+	    --tag $(REGISTRY)/$(APPNAME):latest --push . \
+	    --build-arg=VCS_REF=$(CI_COMMIT_SHA) \
+	    --build-arg=BUILD_DATE=$(shell date +%Y-%m-%dT%H:%M:%SZ) \
+	;)
+else
+	# Push tagged items to two registries: REGISTRY is gitlab,
+	# USER_LOGIN refers to docker hub
+	docker login -u $(USER_LOGIN) -p $(DOCKER_TOKEN)
+	$(foreach target, $(IMAGES), \
+	  image=$(shell basename $(target)) && \
+	  docker buildx build --platform $(PLATFORMS) \
+	    --tag $(REGISTRY)/$(APPNAME):$(CI_COMMIT_TAG) \
+	    --tag $(REGISTRY)/$(APPNAME)}:latest \
+	    --tag $(USER_LOGIN)/$(APPNAME):$(CI_COMMIT_TAG) \
+	    --tag $(USER_LOGIN)/$(APPNAME):latest --push . \
+	    --build-arg=VCS_REF=$(CI_COMMIT_SHA) \
+	    --build-arg=BUILD_DATE=$(shell date +%Y-%m-%dT%H:%M:%SZ) \
+	;)
+endif
+
+clean_images:
+	docker rmi $(REGISTRY)/$(APPNAME):$(TAG) || true
+
+qemu:
+	docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+	docker buildx create --name multibuild
+	docker buildx use multibuild

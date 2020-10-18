@@ -1,11 +1,14 @@
-PYPI_URL ?= https://nexus.instantlinux.net/repository/pypi/
+MAXFAIL   ?= 100
+PYPI_URL  ?= https://nexus.instantlinux.net/repository/pypi/
 PYPI_USER ?= svc_docker
 RRSYNC_URL = https://www.samba.org/ftp/unpacked/rsync/support/rrsync
 SSL_CHAIN ?= /usr/local/share/ca-certificates/instantlinux-ca.crt
-VERSION ?= $(shell grep -o '[0-9.]*' secondshot/_version.py)
+VERSION   ?= $(shell grep -o '[0-9.]*' secondshot/_version.py)
 
 VENV=python_env
 VDIR=$(PWD)/$(VENV)
+
+include Makefile.docker
 
 analysis: flake8
 test: pytest
@@ -21,31 +24,31 @@ test_functional:
 
 flake8: test_requirements
 	@echo "Running flake8 code analysis"
-	(. $(VDIR)/bin/activate ; flake8 --exclude=python_env,check_rsnap.py \
-	 secondshot tests)
-
-python_env: $(VDIR)/bin/python
+	. $(VDIR)/bin/activate ; flake8 --exclude=python_env,check_rsnap.py \
+	  secondshot tests \
+	  --per-file-ignores='secondshot/alembic/versions/*:E501,E122,E128'
+python_env: $(VDIR)/bin/python3
 
 test_requirements: python_env
 	@echo "Installing test requirements"
 	(. $(VDIR)/bin/activate && \
 	 pip install -r tests/requirements.txt)
 
-$(VDIR)/bin/python:
+$(VDIR)/bin/python3:
 	@echo "Creating virtual environment"
-	virtualenv --system-site-packages $(VENV)
+	python3 -m venv --system-site-packages $(VENV)
 
 pytest: test_requirements
 	@echo "Running pytest unit tests"
-	cd secondshot && \
-	export PYTHONPATH=. && \
 	(. $(VDIR)/bin/activate && \
-	 py.test $(XARGS) ../tests/unittests/ \
-	 --junitxml=../tests/unittests/results.xml \
+	 PYTHONPATH=. python3 -m pytest $(XARGS) ./tests/ \
+	 --durations=10 \
+	 --junitxml=./tests/results.xml \
+	 --maxfail=$(MAXFAIL) \
 	 --cov-report html \
 	 --cov-report xml \
 	 --cov-report term-missing \
-	 --cov .)
+	 --cov secondshot)
 
 dist/secondshot-$(VERSION).tar.gz:
 	@echo "Building package"
@@ -63,7 +66,7 @@ bin/rrsync:
 
 clean:
 	rm -rf build dist bin/rrsync secondshot/htmlcov *.egg-info \
-	 .cache .pytest_cache tests/unittests/__pycache__
+	 .cache .pytest_cache tests/__pycache__
 	find . -regextype egrep -regex '.*(coverage.xml|results.xml|\.pyc|~)' \
 	 -exec rm -rf {} \;
 wipe_clean: clean

@@ -13,14 +13,14 @@ import mock
 import os
 
 import test_base
-from actions import Actions
-from models import AlembicVersion
-from syslogger import Syslog
+from secondshot import Actions
+from secondshot.syslogger import Syslog
+from secondshot.models import AlembicVersion
 
 
 class TestSchemaUpdate(test_base.TestBase):
 
-    @mock.patch('syslogger.logger')
+    @mock.patch('secondshot.syslogger.logger')
     def setUp(self, mock_log):
         super(TestSchemaUpdate, self).setUp()
         test_config = os.path.join(os.path.abspath(os.path.dirname(
@@ -32,7 +32,7 @@ class TestSchemaUpdate(test_base.TestBase):
 
         cfg = alembic.config.Config()
         cfg.set_main_option('script_location', os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), '..', '..',
+            os.path.abspath(os.path.dirname(__file__)), '..',
             'secondshot', 'alembic'))
         cfg.set_main_option('url', str(self.engine.url))
         script = alembic.script.ScriptDirectory.from_config(cfg)

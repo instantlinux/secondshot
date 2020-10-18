@@ -14,8 +14,8 @@ import sys
 import tempfile
 
 import test_base
-from secondshot import main
-from _version import __version__
+from secondshot.main import main
+from secondshot._version import __version__
 
 
 class TestMain(test_base.TestBase):
@@ -39,7 +39,7 @@ class TestMain(test_base.TestBase):
         super(TestMain, self).tearDown()
         os.remove(self.rsnapshot_conf)
 
-    @mock.patch('actions.Actions.list_hosts')
+    @mock.patch('secondshot.actions.Actions.list_hosts')
     def test_list_hosts(self, mock_list_hosts):
         sys.argv = ['secondshot', '--list-hosts',
                     '--logfile=%s' % self.logfile_name,
@@ -51,7 +51,7 @@ class TestMain(test_base.TestBase):
         mock_list_hosts.assert_called_once_with()
 
     @mock.patch('sys.stdout.write')
-    @mock.patch('actions.Actions.list_savesets')
+    @mock.patch('secondshot.actions.Actions.list_savesets')
     def test_list_savesets(self, mock_list_savesets, mock_stdout):
         sys.argv = ['secondshot', '--list-savesets',
                     '--logfile=%s' % self.logfile_name,
@@ -64,7 +64,7 @@ class TestMain(test_base.TestBase):
         mock_stdout.assert_called_once_with('test1\n')
 
     @mock.patch('sys.stdout.write')
-    @mock.patch('actions.Actions.list_savesets')
+    @mock.patch('secondshot.actions.Actions.list_savesets')
     def test_json_format(self, mock_list_savesets, mock_stdout):
         sys.argv = ['secondshot', '--list-savesets', '--format=json',
                     '--logfile=%s' % self.logfile_name,
@@ -77,7 +77,7 @@ class TestMain(test_base.TestBase):
         mock_stdout.assert_called_once_with(
             json.dumps(mock_list_savesets.return_value) + '\n')
 
-    @mock.patch('actions.Actions.start')
+    @mock.patch('secondshot.actions.Actions.start')
     def test_start(self, mock_start):
         sys.argv = ['secondshot', '--action=start',
                     '--logfile=%s' % self.logfile_name,
@@ -96,9 +96,9 @@ class TestMain(test_base.TestBase):
         main()
         mock_start.assert_called_once()
 
-    @mock.patch('actions.Actions.list_volumes')
-    @mock.patch('actions.Actions.verify')
-    @mock.patch('actions.Actions.rotate')
+    @mock.patch('secondshot.actions.Actions.list_volumes')
+    @mock.patch('secondshot.actions.Actions.verify')
+    @mock.patch('secondshot.actions.Actions.rotate')
     def test_misc_actions(self, mock_rotate, mock_verify, mock_volumes):
         sys.argv = ['secondshot', '--list-volumes',
                     '--logfile=%s' % self.logfile_name,
@@ -132,7 +132,7 @@ class TestMain(test_base.TestBase):
         mock_stdout.assert_called_once_with(
             'secondshot %s\n' % __version__)
 
-    @mock.patch('actions.Actions.schema_update')
+    @mock.patch('secondshot.actions.Actions.schema_update')
     def test_schema_update(self, mock_schema_update):
         sys.argv = ['secondshot', '--action=schema-update',
                     '--logfile=%s' % self.logfile_name,
@@ -145,7 +145,7 @@ class TestMain(test_base.TestBase):
         main()
         mock_schema_update.assert_called_once()
 
-    @mock.patch('actions.Actions.schema_update')
+    @mock.patch('secondshot.actions.Actions.schema_update')
     def test_schema_error(self, mock_schema_update):
         sys.argv = ['secondshot', '--action=schema-update',
                     '--logfile=%s' % self.logfile_name,

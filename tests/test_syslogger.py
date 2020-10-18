@@ -13,12 +13,12 @@ import os
 import tempfile
 import unittest
 
-from secondshot import Syslog
+from secondshot.syslogger import Syslog
 
 
 class TestSyslog(unittest.TestCase):
 
-    @mock.patch('syslogger.Syslog._now')
+    @mock.patch('secondshot.syslogger.Syslog._now')
     def test_data_prefix(self, mock_now):
         mock_now.return_value = datetime.strptime('Aug 1 2018  1:47PM',
                                                   '%b %d %Y %I:%M%p')
