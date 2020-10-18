@@ -13,7 +13,7 @@ include Makefile.docker
 analysis: flake8
 test: pytest
 package: bin/rrsync dist/secondshot-$(VERSION).tar.gz
-publish: package
+publish: test_requirements package
 	@echo Publishing python package
 	(. $(VDIR)/bin/activate && \
 	 twine upload --cert=$(SSL_CHAIN) --repository-url $(PYPI_URL) \
@@ -50,7 +50,7 @@ pytest: test_requirements
 	 --cov-report term-missing \
 	 --cov secondshot)
 
-dist/secondshot-$(VERSION).tar.gz: test_requirements
+dist/secondshot-$(VERSION).tar.gz:
 	@echo "Building package"
 	pip show wheel >/dev/null; \
 	if [ $$? -ne 0 ]; then \
