@@ -1,2 +1,0 @@
-#!/bin/bash
-curl -X post https://hooks.microbadger.com/images/instantlinux/secondshot/Sa7s6EaOXAIFKmhZgOaWYS2_to=

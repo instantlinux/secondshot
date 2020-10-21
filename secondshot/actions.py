@@ -104,39 +104,42 @@ class Actions(object):
         except Exception as ex:
             Syslog.logger.warn('action=calc_sums msg=%s' % str(ex))
             Syslog.logger.traceback(ex)
-        if (not host or not location):
+        if not host or not location:
             sys.exit('action=calc_sums msg=missing host/location')
         Syslog.logger.info('START action=calc_sums saveset=%s from host=%s '
                            'for location=%s' % (saveset, host, location))
         manifest_file = os.path.join(
-            Config.snapshot_root, location, Config.manifest)
+            Config.snapshot_root, location, host, Config.manifest)
         with open(manifest_file, 'r+') as mfile:
             mfile.readline()
             position = mfile.tell()
             (numbytes, count, total) = (0, 0, 0)
-            for line in mfile:
+            for line in iter(mfile.readline, ''):
                 file_id, file_type, size, has_sum = line.strip().split(',')
                 total += int(size)
-                if has_sum == 'Y' or file_type != 'f' or int(size) == 0:
-                    continue
-                count += 1
-                try:
-                    file = self.session.query(File).filter_by(id=file_id).one()
-                    filename = os.path.join(
-                        Config.snapshot_root, location, file.path,
-                        file.filename)
-                    file.shasum = self._filehash(filename, Config.hashtype)
-                    self.session.add(file)
-                    mfile.seek(position)
-                    mfile.write('%s,%s,%s,Y\n' % (file_id, file_type, size))
-                    numbytes += file.size
-                except Exception as ex:
-                    Syslog.logger.warn('action=calc_sums id=%d msg=skipped '
-                                       'error=%s' % (file.id, str(ex)))
-                if (count % 1000 == 0):
-                    Syslog.logger.debug('action=calc_sums count=%d bytes=%d' %
-                                        (count, numbytes))
-                    self.session.commit()
+                if has_sum != 'Y' and file_type == 'f' and int(size) > 0:
+                    count += 1
+                    try:
+                        file = self.session.query(File).filter_by(
+                            id=file_id).one()
+                        filename = os.path.join(
+                            Config.snapshot_root, location, file.path,
+                            file.filename)
+                        file.shasum = self._filehash(filename, Config.hashtype)
+                        self.session.add(file)
+                        mfile.seek(position)
+                        mfile.write(
+                            '%s,%s,%s,Y\n' % (file_id, file_type, size))
+                        numbytes += file.size
+                    except Exception as ex:
+                        Syslog.logger.warn(
+                            'action=calc_sums id=%d msg=skipped error=%s'
+                            % (file.id, str(ex)))
+                    if (count % 1000 == 0):
+                        Syslog.logger.debug(
+                            'action=calc_sums count=%d bytes=%d'
+                            % (count, numbytes))
+                        self.session.commit()
                 position = mfile.tell()
 
         self.session.commit()
@@ -165,20 +168,22 @@ class Actions(object):
         except Exception as ex:
             sys.exit('action=inject Invalid host or volume: %s' % str(ex))
 
-        mfile = open(os.path.join(pathname, Config.manifest), 'w')
+        mfile = open(os.path.join(pathname, host,
+                                  Config.manifest), 'w')
         mfile.write('file_id,type,file_size,has_checksum\n')
 
         (count, numbytes, skipped) = (0, 0, 0)
-        for dirpath, _, filenames in os.walk(pathname):
+        for dirpath, _, filenames in os.walk(os.path.join(
+                pathname, host)):
             for filename in filenames:
                 if filename == Config.manifest:
                     continue
                 try:
                     stat = os.lstat(os.path.join(dirpath, filename))
                     _path = pymysql.escape_string(os.path.relpath(
-                        dirpath, Config.snapshot_root + '/' +
-                        Constants.SYNC_PATH).encode(
-                        'utf8', 'surrogateescape').decode('utf8'))
+                        dirpath, os.path.join(
+                            Config.snapshot_root, Constants.SYNC_PATH)).encode(
+                                'utf8', 'surrogateescape').decode('utf8'))
                     _filename = pymysql.escape_string(filename.encode(
                         'utf8', 'surrogateescape').decode('utf8'))
                 except OSError as ex:
@@ -507,7 +512,8 @@ class Actions(object):
                 raise RuntimeError('VERIFY saveset=%s not found' % saveset)
 
             manifest_file = os.path.join(
-                Config.snapshot_root, record.location, Config.manifest)
+                Config.snapshot_root, record.location, record.host.hostname,
+                Config.manifest)
             mfile = open(manifest_file, 'r')
             mfile.readline()
             count, errors, missing, skipped = (0, 0, 0, 0)

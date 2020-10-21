@@ -73,7 +73,9 @@ class TestActions(test_base.TestBase):
         super(TestActions, self).tearDown()
 
         os.remove(self.rsnapshot_conf)
+        """
         shutil.rmtree(self.snapshot_root)
+        """
         shutil.rmtree(self.testdata_path)
 
     @mock.patch('secondshot.syslogger.Syslog._now')
@@ -101,7 +103,7 @@ class TestActions(test_base.TestBase):
 
         count = 0
         with open(os.path.join(
-                self.volume_path,
+                self.volume_path, self.testhost,
                 Constants.OPTS_DEFAULTS['manifest']), 'r') as mfile:
             headers = mfile.readline()
             self.assertEqual(headers, 'file_id,type,file_size,has_checksum\n')
@@ -133,7 +135,7 @@ class TestActions(test_base.TestBase):
 
         count = 0
         with open(os.path.join(
-                self.volume_path,
+                self.volume_path, self.testhost,
                 Constants.OPTS_DEFAULTS['manifest']), 'r') as mfile:
             headers = mfile.readline()
             self.assertEqual(headers, 'file_id,type,file_size,has_checksum\n')
@@ -172,7 +174,7 @@ class TestActions(test_base.TestBase):
             os.path.join(self.snapshot_root, 'short.0', self.testhost))
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
         obj.inject(self.testhost, self.volume,
-                   os.path.join(self.snapshot_root, 'short.0', self.testhost),
+                   os.path.join(self.snapshot_root, 'short.0'),
                    saveset.id)
         ret = obj.rotate('short')
         self.assertEqual(ret, expected)
