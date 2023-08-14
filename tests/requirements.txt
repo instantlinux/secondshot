@@ -1,9 +1,9 @@
 -r ../requirements.txt
 
-coverage==5.3
-flake8==3.8.3
+coverage==7.3.0
+flake8==6.1.0
 mock==4.0.2
-pytest==4.6.11
-pytest-cov==2.10.1
-twine==1.15.0
-wheel==0.35.1
+pytest==7.4.0
+pytest-cov==4.1.0
+twine==4.0.2
+wheel==0.41.1

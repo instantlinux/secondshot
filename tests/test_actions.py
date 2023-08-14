@@ -241,7 +241,7 @@ class TestActions(test_base.TestBase):
 
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
         ret = obj.list_hosts()
-        del(ret['hosts'][0]['created'])
+        del ret['hosts'][0]['created']
         self.assertEqual(ret, expected)
 
     def test_list_savesets(self):
@@ -256,7 +256,7 @@ class TestActions(test_base.TestBase):
 
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
         ret = obj.list_savesets()
-        del(ret['savesets'][0]['created'])
+        del ret['savesets'][0]['created']
         self.assertEqual(ret, expected)
 
     def test_list_volumes(self):
@@ -272,8 +272,8 @@ class TestActions(test_base.TestBase):
 
         obj = Actions(self.cli, db_engine=self.engine, db_session=self.session)
         ret = obj.list_volumes()
-        del(ret['volumes'][0]['created'])
-        del(ret['volumes'][1]['created'])
+        del ret['volumes'][0]['created']
+        del ret['volumes'][1]['created']
         self.assertEqual(ret, expected)
 
     def test_filehash(self):
