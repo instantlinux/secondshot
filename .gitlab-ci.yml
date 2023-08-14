@@ -12,7 +12,7 @@ stages:
   - Publish Packages
   - Clean
 
-image: instantlinux/python-builder:3.8.5-r0
+image: instantlinux/python-builder:3.11.4-r0
 
 before_script:
   - export TAG=bld_$CI_PIPELINE_IID_${CI_COMMIT_SHA:0:7}

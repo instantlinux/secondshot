@@ -41,11 +41,11 @@ setuptools.setup(
     packages=setuptools.find_packages(exclude=['tests']),
     include_package_data=True,
     install_requires=[
-        'alembic>=1.4.3',
+        'alembic>=1.11.2',
         'docopt>=0.6.2',
-        'pymysql>=0.10.1',
-        'sqlalchemy>=1.3.19'],
-    python_requires='>=3.6',
+        'pymysql<1.0',
+        'sqlalchemy<1.4'],
+    python_requires='>=3.8',
     test_suite='tests.unittests',
     cmdclass={'test': PyTest},
     classifiers=[
@@ -54,8 +54,9 @@ setuptools.setup(
         'Topic :: System :: Archiving :: Backup',
         'Intended Audience :: System Administrators',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.6',
-        'Programming Language :: Python :: 3.7',
-        'Programming Language :: Python :: 3.8'
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11'
     ]
 )
